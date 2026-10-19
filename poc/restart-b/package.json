@@ -1,0 +1,2 @@
+{ "name": "newsnap-restart-poc", "version": "0.0.1", "type": "module", "main": "index.js",
+  "keywords": ["dsh-plugin"], "dsh": { "bundle": { "patch": "./cordis.patch.yml" } } }

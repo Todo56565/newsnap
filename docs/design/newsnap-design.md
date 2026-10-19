@@ -302,3 +302,14 @@ DSH 的限制与原因（原因为根据源码注释与结构的推断）：
 - **续接参数**：TUI、网页端怎么指定续接哪个会话，待查。
 - **网页 / 服务模式**：端口不变、客户端自动重连，待查。
 - **前提**：团队空闲；有进行中任务直接拒绝（§13-2）。
+
+### 16.5 headless PoC 结果（10-19，通过）
+- 环境：DSH 0.2.1-rc.2 headless + 本地 mock（Anthropic Messages SSE，18889）；代码在 `poc/restart-b/`（插件 `newsnap_restart` 工具 + `helper.mjs` + `mock.mjs`）。插件用 `dsh plugin --profile headless add file:<dir>` 装（file: 是拷贝，改源码要重装）。
+- 流程：工具 `spawn(detached).unref()` 辅助进程 → `ctx.get('appExit')(0)` → 辅助进程轮询父 pid 至 ESRCH（约 100–300 ms）→ 假 apply（`target.txt` v2→v1 + 标记文件）→ 用 `--session-id <id>` 重新拉起。
+- 结果：
+  - `appExit` 在 headless 可用（function），父进程退出码 0；新进程直接接管会话，无 `SessionAlreadyOwnedError`（只等父 pid 退出即可，不用再试 flock）。
+  - 文件已回退；新进程续上同一会话（turn 2）。
+  - 缓存前缀：重启后第一次请求的 `system`、`tools`、`model`、`thinking` 与重启前最后一次请求逐字相同，`messages` 是旧请求的严格前缀（只多出新的 assistant/user 消息）。唯一不同的 `dsh_session_log` 是请求附带的会话增量日志（afterSeq/throughSeq），不属于提示内容。
+  - 工具内立即 `appExit(0)`（不延时）：tool_result 已落盘，turn 在 step 1 后中止，不再发后续模型请求；重启后 tool_use/tool_result 原样在前缀里，新提示并入同一条 user 消息。延时 300 ms 时 headless 会先把该 turn 跑完再退。→ 正式实现建议工具返回后立即退出。
+- 注意：`ctx.get('cmdlineArgs')` 在 apply 时打印为 `{}`，没用上；重新拉起是自己拼参数（原 argv 里的任务文本要换成续接提示并加 `--session-id`），TUI/网页需各自的续接参数（§16.4 待查）。
+- 未测：TUI 的 SIGTTIN 风险、网页/服务模式、租约冲突的反例（父进程未退时拉起）。
