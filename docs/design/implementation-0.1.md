@@ -109,14 +109,17 @@ helper/
 ### 4.4 网页端重连与访问令牌（已核对源码）
 - `client-connection/src/browser-auth.ts`：URL 里的 `?token=` 是**每次启动新生成**的一次性令牌，换到的 cookie 由一个**持久保存的密钥**签名（凭据库里的 `client-connection/browser-session`），并绑定 host:port。
 - 由此推断（未实测）：已经打开过的浏览器带着 cookie，重启后仍然有效，这和 16.6「已打开的页面自动重连」一致；旧的 token 链接在新进程里会失效，但有 cookie 就不需要它。所以 0.1 **不需要固定 token**，前提是端口不变（cookie 绑 authority）。
-- 端口变了（原来用的是 `--port 0`，或端口被占）：cookie 失效，用户要从新打印的地址进入。辅助进程从新进程 stdout 截取 URL 行写进 `result.newUrl`，但那时旧页面已经连不上，看不到这条提示。因此登记时如果检测到 `--port 0`，就提示「重启后地址会变」。
+- **`--port 0` 与自动开浏览器**（10-19 核对 `bundle/web-app`）：不传 `--port` 时用固定默认端口 3080（`cordis.patch.yml:184`）；`--port 0` 由系统随机挑端口，每次启动都不同。另外 web 默认启动后会用**带新 token 的地址自动打开默认浏览器**（`openBrowser` 默认 true，`index.ts:202-235`；`--no-open` 或经 SSH 启动时不开）。因此：
+  - 端口固定：已打开的页面靠 cookie 自动重连；重启时如果再自动开浏览器，会多出一个重复标签页。所以辅助进程重启时**追加 `--no-open`**。
+  - `--port 0`：端口变了，旧页面重连不上，cookie 也不再匹配。这时**保留自动开浏览器**（不加 `--no-open`），由新进程打开带新 token 的地址。用户会看到新开的标签页，旧标签页需要手动关。登记时提示一句「重启后会在新标签页打开」，仍然允许恢复。
+  - 原来就带 `--no-open` 或经 SSH 启动，且用的是 `--port 0`：没人替用户打开新地址。这时只能由辅助进程截取新进程 stdout 里的 URL，写进 `result.newUrl` 和 `helper.log`。登记时提示用户「重启后地址会变，请到终端或 helper.log 里查看」，仍然允许恢复。
 - 待验证：用旧 token 新开页面会怎样（预期是靠 cookie 进入，或者要求重新授权）。
 
 ### 4.5 启动对账（`host/reconcile.ts`，插件 apply 时）
 | pending.status | 处理 |
 |---|---|
 | 无 | 无 |
-| applied | 在会话头面板显示「已恢复到 <快照>」，带救援点 id，可以撤销（= 恢复到救援点）；然后归档 pending |
+| applied | 在会话头面板显示「已恢复到 <快照>」和「撤销」按钮；然后归档 pending |
 | failed / rolled-back | 显示失败原因，说明已经回滚；归档 pending |
 | registered / exiting | 辅助进程没起来或 DSH 没退：清掉 pending，提示「恢复未执行」 |
 | applying | 辅助进程中途挂了：**拒绝打开本队会话**做不到（会话由宿主按需打开），所以只在面板上醒目提示，并提供「继续恢复」（再走一次 §4.2，引擎按 steps 续做）和「回滚」 |
@@ -126,10 +129,16 @@ helper/
 |---|---|---|
 | web | 支持 | 16.6 已验证 |
 | headless | 支持（测试用） | 16.5 已验证 |
-| desktop | 不自动重启 | 宿主由 Electron 拉起（`apps/desktop-host`），Electron 有自己的崩溃恢复和「Restart App and Host」。辅助进程另外拉起一个宿主，会和 Electron 冲突（地址占用，见 `startupAddressInUse`）。0.1 的做法：apply 照做，但不重新拉起，提示用户在 Electron 里点重启。是否能让 Electron 自动重启宿主，留待验证 |
+| desktop | 不自动重启（用户 10-19 接受） | 宿主由 Electron 拉起（`apps/desktop-host`），Electron 有自己的崩溃恢复和「Restart App and Host」。辅助进程另外拉起一个宿主，会和 Electron 冲突（地址占用，见 `startupAddressInUse`）。0.1 的做法：apply 照做，但不重新拉起，提示用户在 Electron 里点重启。是否能让 Electron 自动重启宿主，留待验证 |
 | acp / sdk | 不支持 | 拒绝，提示用命令行 |
 
 profile 的判断：`ctx.get('profileContext')`（`apps/cli/src/profile-boot.ts` 提供），具体字段待实现时核对。
+
+### 4.7 撤销（用户 10-19 定：实现不复杂就做）
+- 救援点的结构和快照完全一样（§2），所以撤销 = 以救援点为目标再走一次 §4.1–4.5，复用同一个还原引擎，不需要新代码路径。这次撤销本身也会生成一个新的救援点，所以撤销也能再撤销。
+- 唯一要额外处理的是：前置检查里「团队空闲」对救援点同样适用。救援点是在 DSH 已退出时建的，那一刻一定空闲，所以没问题。
+- 面板：快照列表下方列出最近的救援点（保留 7 天，总设计 §8），每个都能「恢复到此」；恢复成功后的提示条上放「撤销」，作为最近那个救援点的快捷入口。
+- 工作量：只多一个列表区和一个按钮，所以放进 M5 一起做。
 
 ## 5. 与 token-budget 的关系
 - 恢复后提示是否和原时间线逐字一致，取决于 token-budget 0.6.0 的 E5b。newsnap 不做适配、不 import 它。
@@ -150,7 +159,9 @@ profile 的判断：`ctx.get('profileContext')`（`apps/cli/src/profile-boot.ts`
 - **M5** 网页界面：按钮、面板、路由，加 Playwright e2e。
 - **M6** 桌面端调研；方案 C 的 PoC（0.2）。
 
-## 8. 待用户确认
-1. 桌面端 0.1 只 apply、不自动重启，是否可以接受？
-2. 恢复成功后提供「撤销」（= 恢复到救援点），是否要？
-3. 端口用 `--port 0` 时，登记阶段只提醒地址会变、仍允许恢复，还是直接拒绝？
+## 8. 已定（用户 10-19）
+1. 桌面端 0.1 只做 apply，不自动重启：接受。
+2. 撤销：实现不复杂就做。按 §4.7，它复用还原引擎，所以做。
+3. `--port 0`：不拒绝，按 §4.4 处理。重启时端口固定就加 `--no-open`；端口随机则交给自动开浏览器，或者记录新地址。
+
+暂无其他待定问题；审过后从 M1 开始写代码。
