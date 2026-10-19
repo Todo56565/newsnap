@@ -154,6 +154,18 @@ profile 的判断：`ctx.get('profileContext')`（`apps/cli/src/profile-boot.ts`
 - **冻结期间的 reject**：冻结时 pre-step 返回 `reject`，这时来的步骤会被拒绝。agent-teams 自己也用 reject 做准入，信件投递失败会释放租约、稍后重试；拍照通常只要几秒。需要实测，确认不会丢信。
 - **会话根目录**：按默认配置 `dshHomePath('sessions')` 计算。用户如果在 profile 里改了会话根目录，newsnap 会找不到会话，拍照时报 SessionMissing。0.1 先列为局限。
 
+## 4.9 M4 实现结果（10-19）
+- 模块与设计的对应：§4.1–4.2 合并为 `host/restore.ts`（previewRestore / startRestore / continueRestore）；§4.3 为 `src/helper/helper.ts`（build 后 `lib/helper/helper.js`，需环境变量 `NEWSNAP_HELPER=1` 才执行）；§4.5 为 `host/reconcile.ts`；重启参数是纯函数 `core/relaunch.ts`。
+- 已核对：`profileContext` 由 `apps/cli/src/profile-boot.ts` 提供，字段 `name`（profile 名）、`home`（DSH_HOME）、`cwd` 等；插件改用 `profileContext.home`。`appExit` 用 `ctx.get('appExit')`（`boot/cmdline` 提供）。
+- 斜杠命令：`/newsnap restore <快照>` 先显示影响面，加 `confirm` 才执行；`/newsnap undo [confirm]` 以最近一次成功恢复的救援点为目标（当前登记或 history/ 里最新）；`/newsnap resume`、`/newsnap rollback` 处理卡在 applying 的登记（同样退出交给辅助进程）；`/newsnap status` 显示启动对账的提示（M5 之前的显示方式，另写日志）。
+- 前置检查排除调用者自己的会话（发起恢复的这一轮本来就会被回退）。拍照的「有登记的恢复」只看活动状态，已结束的登记不再挡拍照。
+- 登记写 `helperPid`；启动对账时 registered/exiting 且辅助进程已不在 → 标记失败并归档（「没有执行」）；applying 且辅助进程不在 → 保留并提示 resume/rollback；辅助进程还活着 → 只提示。
+- 启动对账与残骸清理改为遍历 `<home>/newsnap/` 下所有工作区根（根目录对应的 cwd 从其中任一 manifest 读），不再只看进程 cwd。
+- **headless 没有斜杠命令服务**（`commands` 不在 headless profile），所以 e2e 加了开发工具 `newsnap_dev`（仅 `NEWSNAP_DEV_TOOLS=1` 时注册，运行时动态加载 dsh-tools，不加依赖），并加了命令行 `newsnap snap --session <id>`（停机拍照，会话写锁确认 DSH 没在写）。
+- **桌面端与原定不同**：M4 暂时拒绝 desktop（提示改用命令行），而不是「apply 照做、不重启」。原因：appExit 后 Electron 可能立刻按崩溃恢复重拉宿主，与辅助进程的 apply 并发；会话写锁只能挡住打开了的会话，挡不住工作区回退时用户在新宿主里操作。待 M6 调研 Electron 行为后再按原定实现，需用户确认。
+- **headless e2e 通过**（`test/e2e/headless/run.sh` + `mock.mjs`，DSH 0.2.1-rc.2，mock 18890）：命令行拍照 → 改 target.txt、新增 added.txt、跑一轮 → 模型调 `newsnap_dev restore <id> confirm` → 工具结果落盘后 turn 中止、DSH 退出码 0 → 辅助进程 0 ms 内看到父进程退出，会话写锁用宿主 flock，约 280 ms 完成 8 步 → 按 `--session-id` 带续接提示重启 → 新进程启动对账把登记归档进 history/。结果：target.txt 回到 v1、added.txt 删除、救援点 1 份；续接请求的 system、model、thinking 与快照前最后一次请求逐字相同，messages 以它为严格前缀（只多出原有的 assistant 回复和续接提示），快照之后的「turn two」与发起恢复的一轮都不在了。tools 只多了 `newsnap_dev`（e2e 环境变量被辅助进程继承，属测试本身）。
+- 仍未验证：真实 agent-teams 团队（本次 team.json 是手写的）、网页端重启（M5 Playwright）、斜杠命令在网页端的未配对 `command/run`（§4.8）。
+
 ## 5. 与 token-budget 的关系
 - 恢复后提示是否和原时间线逐字一致，取决于 token-budget 0.6.0 的 E5b。newsnap 不做适配、不 import 它。
 - newsnap 整体回退 `.context/`，全文去重撞键不会发生（总设计 §1c(1)）；E5a 是给单会话回退工具用的。
