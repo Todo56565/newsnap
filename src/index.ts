@@ -33,8 +33,14 @@ const HELPER = fileURLToPath(new URL(`./helper/helper${import.meta.url.endsWith(
 
 const DESKTOP_RESTART = '桌面端会弹出「启动失败」对话框，这是 newsnap 让宿主退出造成的，点「重启」即可'
 
-function describeImpact(i: Impact, command: string, autoRestart: boolean): string {
-  const restart = autoRestart ? 'DSH 会自动退出并重新启动' : `DSH 会退出；${DESKTOP_RESTART}`
+/** 恢复后宿主怎样回来：web/headless 自动重启（网页要手动刷新，旧页面的事件游标落在截断后的日志之后），桌面端靠对话框。 */
+function comeBack(profile: string, done = '恢复完成后'): string {
+  if (!relaunchesItself(profile)) return DESKTOP_RESTART
+  return profile === 'web' ? `${done}自动重新启动；页面重新连上后请刷新一次，否则看到的仍是恢复前的对话` : `${done}自动重新启动`
+}
+
+function describeImpact(i: Impact, command: string, profile: string): string {
+  const restart = `DSH 会退出，${comeBack(profile, '')}`
   const lines = [`将把团队 ${i.target.team.name} 恢复到 ${i.target.snapId}（${new Date(i.target.createdAt).toLocaleString()}）：会话、团队状态、工作区都回到那一刻，${restart}。`]
   if (i.removedSessions.length > 0) lines.push(`快照之后新开的 ${i.removedSessions.length} 个会话会移进救援点：${i.removedSessions.join('、')}。`)
   if (i.otherTeams.length > 0) lines.push(`注意：同一工作区还有团队 ${i.otherTeams.join('、')}，工作区文件整体回退也会影响它们。`)
@@ -132,15 +138,15 @@ export function apply(ctx: Context): void {
           }
           const rctx = restoreContext(cwd, session.id)
           if (!confirm) {
-            return { kind: 'success', text: describeImpact(await previewRestore(host, rctx, target), sub === 'restore' ? `/newsnap restore ${target.id}` : '/newsnap undo', relaunchesItself(rctx.profile)) }
+            return { kind: 'success', text: describeImpact(await previewRestore(host, rctx, target), sub === 'restore' ? `/newsnap restore ${target.id}` : '/newsnap undo', rctx.profile) }
           }
           await startRestore(host, rctx, target)
-          return { kind: 'success', text: `正在恢复到 ${target.id}：DSH 马上退出，${relaunchesItself(rctx.profile) ? '恢复完成后自动重新启动' : DESKTOP_RESTART}。` }
+          return { kind: 'success', text: `正在恢复到 ${target.id}：DSH 马上退出，${comeBack(rctx.profile)}。` }
         }
         case 'resume':
         case 'rollback': {
           const pending = await continueRestore(restoreContext(cwd, session.id), sub === 'resume' ? 'apply' : 'rollback')
-          const after = relaunchesItself(profile?.name ?? '') ? '完成后自动重新启动' : DESKTOP_RESTART
+          const after = comeBack(profile?.name ?? '', '完成后')
           return { kind: 'success', text: `${sub === 'resume' ? '继续恢复' : '回滚'} ${pending.target.id}：DSH 马上退出，${after}。` }
         }
         case 'status': {

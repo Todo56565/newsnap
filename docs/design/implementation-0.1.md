@@ -167,6 +167,14 @@ profile 的判断：`ctx.get('profileContext')`（`apps/cli/src/profile-boot.ts`
 - **桌面端源码核对（10-19 晚）**：宿主非 Electron 要求的退出（含退出码 0）被 `apps/desktop/src/host-process.ts` 当作致命错误 → `fatal-recovery.ts` 弹「启动失败」对话框（退出 / 重启 / 禁用第三方插件），「重启」= `app.relaunch()`；**不会自动重拉宿主**。上面「与 apply 并发」的担心基本不成立（apply 约 280 ms，只有用户在此期间点重启才撞上）。桌面宿主用 web-app 组合、profile 名 `desktop`，`appExit` 由 dsh-cmdline 提供，推断可用（未实测）。沙盒无法跑桌面端（未发 npm、无 Electron/显示）。用户 10-19 确认按原定：desktop 只 apply 不重启（relaunch = null），确认与回应文字提示「会弹出启动失败对话框，点重启即可」；本机测试清单 `docs/testing/desktop-manual.md`。
 - 仍未验证：真实 agent-teams 团队（本次 team.json 是手写的）、网页端重启（M5 Playwright）、斜杠命令在网页端的未配对 `command/run`（§4.8）。
 
+## 4.10 网页端 e2e（10-19，M5 前置）
+`test/e2e/web/`：mock（复用 headless 的 mock.mjs，端口改 18891）+ `start.sh` 起 `dsh --profile web --port 8791` + Playwright 脚本 `web.mjs`（Playwright 不进依赖，单独 `npm i playwright && npx playwright install chromium`）。流程：选工作区 → 一轮对话 → 写 team.json → `/newsnap snap` → 改文件、再一轮 → `/newsnap restore <id>` 预览 → confirm → 等重连 → `/newsnap status` → 续一轮 → 刷新页面。
+
+结果（两次跑，热启动）：
+- 恢复链路全对：helper `session guard: flock`、DSH 退出约 0.3 秒后开始、恢复约 0.3 秒；重启参数带 `--no-open`；约 6–9 秒页面重连。工作区、会话日志（快照之后两轮消失、对账提示写入、续的一轮正常落盘）都正确。
+- **旧页面不自动刷新**：重连后显示「Failed to load history: session event stream resumed at a cursor behind the last applied entry」，看到的仍是恢复前的对话，紧接着发的斜杠命令显示 Running… 不结束；**刷新页面（同一浏览器）后一切正常**，cookie 跨重启仍有效（新进程的 URL token 变了，但已登录的浏览器不受影响；新开浏览器需要新 token，新 token 打在被忽略的 stdout 上）。
+- 处理：网页 profile 的提示语改为「页面重新连上后请刷新一次」。插件无法让旧页面自己刷新（要动网页客户端，留给 M5 讨论）。新 token 拿不到的问题仍只记已知局限。
+
 ## 5. 与 token-budget 的关系
 - 恢复后提示是否和原时间线逐字一致，取决于 token-budget 0.6.0 的 E5b。newsnap 不做适配、不 import 它。
 - newsnap 整体回退 `.context/`，全文去重撞键不会发生（总设计 §1c(1)）；E5a 是给单会话回退工具用的。
