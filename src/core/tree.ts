@@ -6,7 +6,7 @@
  * @module newsnap/core/tree
  */
 
-import { copyFile, lstat, mkdir, readdir, readlink, rm, symlink, utimes } from 'node:fs/promises'
+import { copyFile, lstat, mkdir, readdir, readlink, rename, rm, rmdir, symlink, utimes } from 'node:fs/promises'
 import { dirname, join, sep } from 'node:path'
 import { sha256File } from './fsutil.ts'
 
@@ -97,6 +97,58 @@ export async function restoreMtimes(root: string, entries: readonly TreeEntry[])
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error
     }
   }
+}
+
+/**
+ * 把 dst 中「范围内」的部分同步成清单的样子（还原 `.agent-teams` 用）：
+ * 范围由 exclude 定义（与 scanTree 同义，返回 true 的路径不在范围内、不碰）；
+ * 范围内清单里没有的条目删除；类型不符的先删；文件经临时文件 + rename 写入；最后还原 mtime。
+ * 清单必须来自对 src 的 scanTree。
+ */
+export async function syncTree(
+  src: string,
+  dst: string,
+  entries: readonly TreeEntry[],
+  options: { readonly exclude?: (relPath: string) => boolean } = {},
+): Promise<void> {
+  await mkdir(dst, { recursive: true })
+  const want = new Map(entries.map((e) => [e.path, e]))
+  const current = await scanTree(dst, { ...(options.exclude !== undefined && { exclude: options.exclude }), skipHash: true })
+  // 由深到浅删除：多余的条目，以及类型不符的条目
+  for (const got of [...current].sort((a, b) => b.path.length - a.path.length)) {
+    const w = want.get(got.path)
+    if (w !== undefined && w.type === got.type && !(w.type === 'symlink' && got.type === 'symlink' && w.target !== got.target)) continue
+    const target = abs(dst, got.path)
+    if (got.type === 'dir') {
+      try {
+        await rmdir(target)
+      } catch {
+        // 里面还有范围外的东西（不该发生）：整个删掉
+        await rm(target, { recursive: true, force: true })
+      }
+    } else {
+      await rm(target, { force: true })
+    }
+  }
+  for (const entry of entries) {
+    const to = abs(dst, entry.path)
+    if (entry.type === 'dir') {
+      await mkdir(to, { recursive: true })
+    } else if (entry.type === 'symlink') {
+      await mkdir(dirname(to), { recursive: true })
+      try {
+        await symlink(entry.target, to)
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error
+      }
+    } else {
+      await mkdir(dirname(to), { recursive: true })
+      const tmp = `${to}.newsnap-tmp`
+      await copyFile(abs(src, entry.path), tmp)
+      await rename(tmp, to)
+    }
+  }
+  await restoreMtimes(dst, entries)
 }
 
 export interface TreeDiff {

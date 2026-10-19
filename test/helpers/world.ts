@@ -39,7 +39,7 @@ export async function world() {
   await writeFile(join(cwd, '.agent-teams/archive/alpha/team.json'), '{}')
   await writeFile(join(cwd, '.agent-teams/archive/gamma/team.json'), '{}')
   await writeFile(join(cwd, '.agent-teams/.context/state/x.json'), '{}')
-  await writeFile(join(cwd, '.agent-teams/retired-members.json'), '["m0"]')
+  await writeFile(join(cwd, '.agent-teams/retired-members.json'), JSON.stringify(['m0'], null, 2) + '\n')
   await writeFile(join(cwd, 'main.ts'), 'code')
   await writeSession(home, cwd, 'cap')
   await writeSession(home, cwd, 'm1', undefined, false)

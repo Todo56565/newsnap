@@ -5,7 +5,7 @@
  * @module newsnap/core/capture
  */
 
-import { copyFile, mkdir, rm, stat } from 'node:fs/promises'
+import { copyFile, mkdir, readdir, rm, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { newId, sha256File, writeJsonAtomic } from './fsutil.ts'
 import { layout, writeManifest, type SnapManifest, type SnapSession } from './manifest.ts'
@@ -45,24 +45,52 @@ export interface CaptureParams {
   readonly versions?: Readonly<Record<string, string>>
   readonly id?: string
   readonly now?: number
+  /**
+   * 救援点用（DSH 已退出时）：额外收录的会话 id（快照里有、现在团队里已没有的成员），
+   * 会话目录不存在就跳过而不是报错，并且复制会话目录里的全部代文件（回滚要原样恢复）。
+   */
+  readonly extraSessionIds?: readonly string[]
 }
 
 /** 会话目录与本次快照里各会话的角色。后代按 parentSession 递归，只看同工作区项目目录。 */
-export async function resolveTeamSessions(home: string, cwd: string, team: TeamSummary) {
-  const roots = teamSessionIds(team)
+export async function resolveTeamSessions(home: string, cwd: string, team: TeamSummary, extra: readonly string[] = []) {
+  const roots = [...new Set([...teamSessionIds(team), ...extra])]
   const project = await listProjectSessions(home, cwd)
   const roles = new Map<string, SnapSession['role']>()
   roles.set(team.captainSessionId, 'captain')
-  for (const id of team.memberSessionIds) if (!roles.has(id)) roles.set(id, 'member')
+  for (const id of [...team.memberSessionIds, ...extra]) if (!roles.has(id)) roles.set(id, 'member')
   for (const id of descendantsOf(roots, project)) roles.set(id, 'descendant')
   const cwdOf = new Map(project.map((s) => [s.header.id, s.header.cwd ?? null]))
   return [...roles].map(([id, role]) => ({ id, role, cwd: cwdOf.get(id) ?? cwd }))
 }
 
-async function copySession(home: string, snapDir: string, s: { id: string; role: SnapSession['role']; cwd: string | null }): Promise<SnapSession> {
+/** 代文件与其他会话附属文件（不含写锁）。 */
+const SKIP_IN_FULL_COPY = new Set(['session.lock'])
+
+async function copySession(
+  home: string,
+  snapDir: string,
+  s: { id: string; role: SnapSession['role']; cwd: string | null },
+  full: boolean,
+): Promise<SnapSession | undefined> {
   const dir = sessionDir(home, s.cwd ?? undefined, s.id)
-  const gen = await currentGeneration(dir)
-  if (gen === undefined) throw new SessionMissing(`session ${s.id} has no log under ${dir}`)
+  const gen = await currentGeneration(dir).catch(() => undefined)
+  if (gen === undefined) {
+    if (full) return undefined
+    throw new SessionMissing(`session ${s.id} has no log under ${dir}`)
+  }
+  if (full) {
+    const dstDir = join(snapDir, 'sessions', encodeSegment(s.id))
+    await mkdir(dstDir, { recursive: true })
+    for (const name of await readdir(dir)) {
+      if (SKIP_IN_FULL_COPY.has(name)) continue
+      const st = await stat(join(dir, name))
+      if (st.isFile()) await copyFile(join(dir, name), join(dstDir, name))
+    }
+    const dst = join(dstDir, gen.file)
+    const copied = await stat(dst)
+    return { id: s.id, cwd: s.cwd, generation: gen.file, size: copied.size, sha256: await sha256File(dst), role: s.role }
+  }
   const src = join(dir, gen.file)
   const before = await stat(src)
   const dstDir = join(snapDir, 'sessions', encodeSegment(s.id))
@@ -95,9 +123,13 @@ export async function captureSnapshot(params: CaptureParams): Promise<SnapManife
   await mkdir(dir) // 已存在就抛错，不覆盖别人的目录
   try {
     // 1. 会话
-    const targets = await resolveTeamSessions(home, cwd, team)
+    const full = kind === 'rescue'
+    const targets = await resolveTeamSessions(home, cwd, team, params.extraSessionIds ?? [])
     const sessions: SnapSession[] = []
-    for (const t of targets) sessions.push(await copySession(home, dir, t))
+    for (const t of targets) {
+      const copied = await copySession(home, dir, t, full)
+      if (copied !== undefined) sessions.push(copied)
+    }
 
     // 2. .agent-teams 相关部分
     const filter = agentTeamsFilter(team.id)
@@ -109,7 +141,7 @@ export async function captureSnapshot(params: CaptureParams): Promise<SnapManife
     if (!isClean(diff)) throw new SnapshotRaced(`.agent-teams changed while copying: ${JSON.stringify(diff)}`)
 
     const retired = await readRetiredMemberIds(cwd)
-    const retiredTeamMembers = teamSessionIds(team).filter((sid) => retired.has(sid))
+    const retiredTeamMembers = sessions.map((x) => x.id).filter((sid) => retired.has(sid))
 
     // 3. 工作区
     const ws = await snapshotWorkspace({
