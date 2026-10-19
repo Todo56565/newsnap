@@ -44,8 +44,20 @@ export interface Impact {
   readonly otherTeams: string[]
 }
 
+/** 桌面端：宿主退出后 Electron 弹「启动失败」对话框，由用户点「重启」（不自动重拉，实现设计 §4.6、§4.9）。 */
+export const APPLY_ONLY_PROFILES = ['desktop'] as const
+
+export function relaunchesItself(profile: string): boolean {
+  return (SUPPORTED_RELAUNCH_PROFILES as readonly string[]).includes(profile)
+}
+
+function relaunchFor(ctx: RestoreContext): RelaunchSpec | null {
+  if (!relaunchesItself(ctx.profile)) return null
+  return { ...ctx.relaunch, profile: ctx.profile, ...(ctx.profile === 'headless' && { sessionId: ctx.sessionId }) }
+}
+
 function checkProfile(ctx: RestoreContext): void {
-  if (!(SUPPORTED_RELAUNCH_PROFILES as readonly string[]).includes(ctx.profile)) {
+  if (!relaunchesItself(ctx.profile) && !(APPLY_ONLY_PROFILES as readonly string[]).includes(ctx.profile)) {
     throw new RestoreUnsupported(`profile "${ctx.profile}" cannot restart itself; quit DSH and run \`newsnap apply\` from a terminal`)
   }
   if (typeof ctx.appExit !== 'function') throw new RestoreUnsupported('this host does not expose appExit; quit DSH and run `newsnap apply` from a terminal')
@@ -82,8 +94,7 @@ export async function startRestore(host: HostRuntime, ctx: RestoreContext, targe
   const root = newsnapRoot(ctx.home, ctx.cwd)
   const release = await acquireLock(layout(root).lock, 'register')
   try {
-    const relaunch: RelaunchSpec = { ...ctx.relaunch, profile: ctx.profile, ...(ctx.profile === 'headless' && { sessionId: ctx.sessionId }) }
-    const pending = await registerRestore({ home: ctx.home, cwd: ctx.cwd, target, relaunch })
+    const pending = await registerRestore({ home: ctx.home, cwd: ctx.cwd, target, relaunch: relaunchFor(ctx) })
     await writePending(root, { ...pending, status: 'exiting' })
   } finally {
     await release()
@@ -98,8 +109,7 @@ export async function continueRestore(ctx: RestoreContext, mode: 'apply' | 'roll
   const root = newsnapRoot(ctx.home, ctx.cwd)
   const pending = await readPending(root)
   if (pending === undefined || !ACTIVE_STATUSES.includes(pending.status)) throw new RestoreNotFound('no unfinished restore here')
-  const relaunch: RelaunchSpec = { ...ctx.relaunch, profile: ctx.profile, ...(ctx.profile === 'headless' && { sessionId: ctx.sessionId }) }
-  await writePending(root, { ...pending, relaunch })
+  await writePending(root, { ...pending, relaunch: relaunchFor(ctx) })
   launch(ctx, mode)
   return pending
 }

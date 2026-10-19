@@ -43,7 +43,8 @@ test('previewRestore：显示新增会话与其他团队；desktop 拒绝；有�
   const impact = await previewRestore(idle, rctx(home, cwd), { kind: 'snapshot', id: 's1' })
   assert.deepEqual(impact.removedSessions, ['sub9'])
   assert.deepEqual(impact.otherTeams, ['beta'])
-  await assert.rejects(previewRestore(idle, rctx(home, cwd, { profile: 'desktop' }), { kind: 'snapshot', id: 's1' }), RestoreUnsupported)
+  await assert.rejects(previewRestore(idle, rctx(home, cwd, { profile: 'acp' }), { kind: 'snapshot', id: 's1' }), RestoreUnsupported)
+  await assert.rejects(previewRestore(idle, rctx(home, cwd, { appExit: undefined }), { kind: 'snapshot', id: 's1' }), RestoreUnsupported)
   const busy: HostRuntime = { ...idle, agentStatus: (id) => (id === 'm1' ? 'running' : 'idle') }
   await assert.rejects(previewRestore(busy, rctx(home, cwd), { kind: 'snapshot', id: 's1' }), SnapshotBlocked)
   // 调用者自己的会话不算
@@ -90,4 +91,15 @@ test('对账：exiting 但辅助进程已不在 → 标记未执行并归档；a
   n = await reconcile(home)
   assert.match(n[0]!.text, /resume/)
   assert.equal((await readPending(root))?.status, 'applying')
+})
+
+test('desktop：登记时 relaunch 为 null（只 apply，不重启），照样拉起辅助进程并退出', async () => {
+  const { home, cwd, team } = await world()
+  await captureSnapshot({ home, cwd, team, id: 's1' })
+  const c = rctx(home, cwd, { profile: 'desktop' })
+  await startRestore(idle, c, { kind: 'snapshot', id: 's1' })
+  assert.deepEqual(c.calls, ['helper apply', 'scheduled', 'exit 0'])
+  const p = (await readPending(newsnapRoot(home, cwd)))!
+  assert.equal(p.status, 'exiting')
+  assert.equal(p.relaunch, null)
 })

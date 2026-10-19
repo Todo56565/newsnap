@@ -162,9 +162,9 @@ profile 的判断：`ctx.get('profileContext')`（`apps/cli/src/profile-boot.ts`
 - 登记写 `helperPid`；启动对账时 registered/exiting 且辅助进程已不在 → 标记失败并归档（「没有执行」）；applying 且辅助进程不在 → 保留并提示 resume/rollback；辅助进程还活着 → 只提示。
 - 启动对账与残骸清理改为遍历 `<home>/newsnap/` 下所有工作区根（根目录对应的 cwd 从其中任一 manifest 读），不再只看进程 cwd。
 - **headless 没有斜杠命令服务**（`commands` 不在 headless profile），所以 e2e 加了开发工具 `newsnap_dev`（仅 `NEWSNAP_DEV_TOOLS=1` 时注册，运行时动态加载 dsh-tools，不加依赖），并加了命令行 `newsnap snap --session <id>`（停机拍照，会话写锁确认 DSH 没在写）。
-- **桌面端与原定不同**：M4 暂时拒绝 desktop（提示改用命令行），而不是「apply 照做、不重启」。原因：appExit 后 Electron 可能立刻按崩溃恢复重拉宿主，与辅助进程的 apply 并发；会话写锁只能挡住打开了的会话，挡不住工作区回退时用户在新宿主里操作。待 M6 调研 Electron 行为后再按原定实现，需用户确认。
+- **桌面端（已改回原定，见下条）**：M4 最初暂时拒绝 desktop（提示改用命令行），而不是「apply 照做、不重启」。原因：appExit 后 Electron 可能立刻按崩溃恢复重拉宿主，与辅助进程的 apply 并发；会话写锁只能挡住打开了的会话，挡不住工作区回退时用户在新宿主里操作。待 M6 调研 Electron 行为后再按原定实现，需用户确认。
 - **headless e2e 通过**（`test/e2e/headless/run.sh` + `mock.mjs`，DSH 0.2.1-rc.2，mock 18890）：命令行拍照 → 改 target.txt、新增 added.txt、跑一轮 → 模型调 `newsnap_dev restore <id> confirm` → 工具结果落盘后 turn 中止、DSH 退出码 0 → 辅助进程 0 ms 内看到父进程退出，会话写锁用宿主 flock，约 280 ms 完成 8 步 → 按 `--session-id` 带续接提示重启 → 新进程启动对账把登记归档进 history/。结果：target.txt 回到 v1、added.txt 删除、救援点 1 份；续接请求的 system、model、thinking 与快照前最后一次请求逐字相同，messages 以它为严格前缀（只多出原有的 assistant 回复和续接提示），快照之后的「turn two」与发起恢复的一轮都不在了。tools 只多了 `newsnap_dev`（e2e 环境变量被辅助进程继承，属测试本身）。
-- **桌面端源码核对（10-19 晚）**：宿主非 Electron 要求的退出（含退出码 0）被 `apps/desktop/src/host-process.ts` 当作致命错误 → `fatal-recovery.ts` 弹「启动失败」对话框（退出 / 重启 / 禁用第三方插件），「重启」= `app.relaunch()`；**不会自动重拉宿主**。上面「与 apply 并发」的担心基本不成立（apply 约 280 ms，只有用户在此期间点重启才撞上）。桌面宿主用 web-app 组合、profile 名 `desktop`，`appExit` 由 dsh-cmdline 提供，推断可用（未实测）。沙盒无法跑桌面端（未发 npm、无 Electron/显示）。建议按原定改回「apply 不重启、提示点重启」，待用户确认；实测需用户本机。
+- **桌面端源码核对（10-19 晚）**：宿主非 Electron 要求的退出（含退出码 0）被 `apps/desktop/src/host-process.ts` 当作致命错误 → `fatal-recovery.ts` 弹「启动失败」对话框（退出 / 重启 / 禁用第三方插件），「重启」= `app.relaunch()`；**不会自动重拉宿主**。上面「与 apply 并发」的担心基本不成立（apply 约 280 ms，只有用户在此期间点重启才撞上）。桌面宿主用 web-app 组合、profile 名 `desktop`，`appExit` 由 dsh-cmdline 提供，推断可用（未实测）。沙盒无法跑桌面端（未发 npm、无 Electron/显示）。用户 10-19 确认按原定：desktop 只 apply 不重启（relaunch = null），确认与回应文字提示「会弹出启动失败对话框，点重启即可」；本机测试清单 `docs/testing/desktop-manual.md`。
 - 仍未验证：真实 agent-teams 团队（本次 team.json 是手写的）、网页端重启（M5 Playwright）、斜杠命令在网页端的未配对 `command/run`（§4.8）。
 
 ## 5. 与 token-budget 的关系

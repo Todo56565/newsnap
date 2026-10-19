@@ -21,7 +21,7 @@ import { NotATeamSession, SnapshotBlocked, takeSnapshot, teamFor, type HostRunti
 import { formatBlocked, formatList, formatSnapshot } from './host/format.ts'
 import { registerDevTool } from './host/dev-tool.ts'
 import { reconcile, type Notice } from './host/reconcile.ts'
-import { continueRestore, previewRestore, RestoreNotFound, RestoreUnsupported, startRestore, type Impact, type RestoreContext } from './host/restore.ts'
+import { continueRestore, previewRestore, relaunchesItself, RestoreNotFound, RestoreUnsupported, startRestore, type Impact, type RestoreContext } from './host/restore.ts'
 
 export const name = 'newsnap'
 export const inject = ['agents', 'sessions']
@@ -31,8 +31,11 @@ const USAGE = '用法：/newsnap snap [备注] | list | restore <快照> [confir
 
 const HELPER = fileURLToPath(new URL(`./helper/helper${import.meta.url.endsWith('.ts') ? '.ts' : '.js'}`, import.meta.url))
 
-function describeImpact(i: Impact, command: string): string {
-  const lines = [`将把团队 ${i.target.team.name} 恢复到 ${i.target.snapId}（${new Date(i.target.createdAt).toLocaleString()}）：会话、团队状态、工作区都回到那一刻，DSH 会自动退出并重新启动。`]
+const DESKTOP_RESTART = '桌面端会弹出「启动失败」对话框，这是 newsnap 让宿主退出造成的，点「重启」即可'
+
+function describeImpact(i: Impact, command: string, autoRestart: boolean): string {
+  const restart = autoRestart ? 'DSH 会自动退出并重新启动' : `DSH 会退出；${DESKTOP_RESTART}`
+  const lines = [`将把团队 ${i.target.team.name} 恢复到 ${i.target.snapId}（${new Date(i.target.createdAt).toLocaleString()}）：会话、团队状态、工作区都回到那一刻，${restart}。`]
   if (i.removedSessions.length > 0) lines.push(`快照之后新开的 ${i.removedSessions.length} 个会话会移进救援点：${i.removedSessions.join('、')}。`)
   if (i.otherTeams.length > 0) lines.push(`注意：同一工作区还有团队 ${i.otherTeams.join('、')}，工作区文件整体回退也会影响它们。`)
   lines.push('恢复前的状态会存成救援点，之后可以撤销。')
@@ -129,15 +132,16 @@ export function apply(ctx: Context): void {
           }
           const rctx = restoreContext(cwd, session.id)
           if (!confirm) {
-            return { kind: 'success', text: describeImpact(await previewRestore(host, rctx, target), sub === 'restore' ? `/newsnap restore ${target.id}` : '/newsnap undo') }
+            return { kind: 'success', text: describeImpact(await previewRestore(host, rctx, target), sub === 'restore' ? `/newsnap restore ${target.id}` : '/newsnap undo', relaunchesItself(rctx.profile)) }
           }
           await startRestore(host, rctx, target)
-          return { kind: 'success', text: `正在恢复到 ${target.id}：DSH 马上退出，恢复完成后自动重新启动。` }
+          return { kind: 'success', text: `正在恢复到 ${target.id}：DSH 马上退出，${relaunchesItself(rctx.profile) ? '恢复完成后自动重新启动' : DESKTOP_RESTART}。` }
         }
         case 'resume':
         case 'rollback': {
           const pending = await continueRestore(restoreContext(cwd, session.id), sub === 'resume' ? 'apply' : 'rollback')
-          return { kind: 'success', text: `${sub === 'resume' ? '继续恢复' : '回滚'} ${pending.target.id}：DSH 马上退出，完成后自动重新启动。` }
+          const after = relaunchesItself(profile?.name ?? '') ? '完成后自动重新启动' : DESKTOP_RESTART
+          return { kind: 'success', text: `${sub === 'resume' ? '继续恢复' : '回滚'} ${pending.target.id}：DSH 马上退出，${after}。` }
         }
         case 'status': {
           const text = noticeText(cwd)
