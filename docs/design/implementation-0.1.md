@@ -86,6 +86,14 @@ helper/
 - 第 3–7 步任一失败：自动用救援点回滚（同一引擎反向执行，从救援点还原），status = failed，`result.message` 写原因。回滚本身也失败时 status 留在 applying，交给 `newsnap doctor`。
 - 引擎接收 `{ home, snapDir, rescueDir, pending }`，不读全局状态，单测直接用临时目录。
 
+### 3.1 M3 实现时的调整
+- **会话写锁**：宿主在 POSIX 上对 `session.lock` 做非阻塞 flock，用的是原生模块 `@deepseek-ai/node-addon-system/flock`。newsnap 不自带原生模块，从 DSH 安装目录加载（`core/session-guard.ts`）；加载不到时，命令行必须加 `--dsh-stopped`，由用户担保 DSH 已退出。M4 的辅助进程等父进程退出后，也走同一个守卫。Windows 0.1 不支持。
+- **救援点复制会话目录里的全部代文件**（快照只复制当前代），回滚时才能原样恢复。所以「新增会话移进救援点」改为：救援点里已有全量副本，第 3 步直接删掉原目录。
+- **retired-members.json**：按 agent-teams 的格式写回（排序、两格缩进、末尾换行），名单里其他团队的 id 不动。
+- **mergeSnapshotPicks 比对**：0.1 没做，只在设计里保留。
+- **续做**：救援点已建成就复用；第 3–7 步整体重跑（每步幂等）。救援点建到一半中断的残骸由 doctor 或启动时清理。
+- **命令行**：比原计划多了 `resume`（续做）和 `undo`（恢复到上一次的救援点）；`rollback` 只处理卡在 applying 的情况。
+
 ## 4. 恢复流程（方案 B）
 
 ### 4.1 登记（运行中，`host/register.ts`）
