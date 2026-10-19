@@ -18,7 +18,11 @@ log('fake apply done')
 // relaunch: replace the task text with a continue prompt and pin the session
 const args = p.argv.slice()
 const out = fs.openSync('/workspace/work/snapb/relaunch.out', 'a')
-const finalArgs = [...p.execArgv, args[0], '--profile', 'headless', '--json', '--session-id', p.sessionId, 'continue after restart']
+const headless = args.includes('headless')
+const finalArgs = headless
+  ? [...p.execArgv, args[0], '--profile', 'headless', '--json', '--session-id', p.sessionId, 'continue after restart']
+  : [...p.execArgv, ...args]
 log('relaunch: ' + p.execPath + ' ' + JSON.stringify(finalArgs))
 const c = spawn(p.execPath, finalArgs, { cwd: p.cwd, env: process.env, stdio: ['ignore', out, out], detached: true })
 c.on('exit', code => { log('relaunched dsh exited code=' + code); process.exit(0) })
+if (!headless) { log('relaunched pid ' + c.pid + ' (web, leaving it running)'); c.unref(); process.exit(0) }

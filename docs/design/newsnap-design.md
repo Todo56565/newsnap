@@ -313,3 +313,14 @@ DSH 的限制与原因（原因为根据源码注释与结构的推断）：
   - 工具内立即 `appExit(0)`（不延时）：tool_result 已落盘，turn 在 step 1 后中止，不再发后续模型请求；重启后 tool_use/tool_result 原样在前缀里，新提示并入同一条 user 消息。延时 300 ms 时 headless 会先把该 turn 跑完再退。→ 正式实现建议工具返回后立即退出。
 - 注意：`ctx.get('cmdlineArgs')` 在 apply 时打印为 `{}`，没用上；重新拉起是自己拼参数（原 argv 里的任务文本要换成续接提示并加 `--session-id`），TUI/网页需各自的续接参数（§16.4 待查）。
 - 未测：TUI 的 SIGTTIN 风险、网页/服务模式、租约冲突的反例（父进程未退时拉起）。
+
+### 16.6 TUI 与网页（10-19）
+- **TUI 不存在**：DSH 0.2.1-rc.2 默认 profile 只有 acp / headless / sdk / sdk-minimal / web，仓库 apps/ 只有 cli、desktop、desktop-host、web；README 的 `--profile tui` 只是“假设已安装”的示例。§16.4 的 SIGTTIN 风险当前不适用，B' 外层启动器暂不需要。
+- **网页 PoC 通过**（DSH web，端口 8790，mock；Playwright 脚本 `poc/restart-b/snapweb*.mjs`）：
+  - 在页面发 `RESTART please` → 工具调用 → `appExit(0)` → 辅助进程等父 pid 约 600 ms → 假 apply → 用**原参数原样**重新拉起（网页不需要会话参数，会话从磁盘读）。同一端口直接起来，无 EADDRINUSE。
+  - 已打开的页面左下角先显示 Reconnecting…，约 20 s 内自己连回，无需刷新；会话内容（工具调用与回复）都在。
+  - 重启后在同一会话继续发消息正常（turn 2）；该请求的 system、tools 及其余字段与重启前最后一次请求逐字相同，messages 为严格前缀。
+  - 注意：重启后访问 token 会变（`?token=` 新值）。已打开的页面照样重连；用旧 token 新开页面是否可用未测。正式实现要么让 token 稳定，要么在重启后把新地址告诉用户。
+  - 网页下延时 300 ms 退出时，该 turn 先跑完再退（与 headless 相同）。
+- 辅助进程 cwd 是 DSH 进程的 cwd，不是会话 cwd；正式实现 apply 时要用会话 cwd。
+- 桌面端（desktop-host）未测。
