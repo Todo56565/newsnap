@@ -33,7 +33,7 @@ src/
     hash.ts           流式 sha256
     shadow-git.ts     影子 Git 封装（GIT_DIR / GIT_WORK_TREE / GIT_INDEX_FILE）
     mtime.ts          mtime 清单的生成与还原
-    tar.ts            .agent-teams 部分打包 / 解包（保留 mtime）
+    tree.ts           目录树清单：扫描（大小、sha256、mtime）、带 mtime 复制、还原 mtime、校验（取代 tar，见 §2）
     teams.ts          只读 team.json 的少数字段（成员与队长会话 id、任务状态、createdAt），对不上就抛 UnsupportedTeamState
     apply.ts          还原引擎（§3）：救援点 → 替换 → 删投影缓存 → 校验，按步骤写日志、可续做、可回滚
     journal.ts        步骤日志（pending-restore.json 内的 steps[]）
@@ -54,7 +54,7 @@ helper/
 ```
 <DSH_HOME>/newsnap/<projectKey(cwd)>/
   repo.git/
-  snaps/<snapId>/manifest.json, sessions/…, agent-teams.tar, mtimes.json
+  snaps/<snapId>/manifest.json, sessions/…, agent-teams/（按清单复制的目录树）, mtimes.json
   rescue/<rescueId>/      结构同 snaps，另含 restore-of: <snapId>
   pending-restore.json    同一时刻最多一份
   lock                    newsnap 自己的互斥锁（flock），拍照、登记、apply 互斥
@@ -66,6 +66,7 @@ helper/
   - `relaunch`：`{ execPath, execArgv, argv, cwd, profile, sessionId?, port? }`，在登记时从 `process.*` 记录。env 不落盘（可能含密钥），由辅助进程直接继承。
   - `result`：`{ ok, message, at, newUrl? }`，供启动对账展示。
 - 所有 JSON 都先写 `*.tmp` 再 `rename`，避免写一半。
+- **tar 改为目录树复制**（M1 定）：`.agent-teams` 相关部分按 `scanTree` 清单（路径、大小、sha256、mtime）复制成普通目录，清单写进 manifest。这样纯 Node 就能完成、跨平台，还能逐文件校验，不依赖系统 tar。mtime 经 `utimes` 往返会丢亚微秒精度，校验容差为 1 ms（`MTIME_TOLERANCE_MS`）。
 
 ## 3. 还原引擎 `core/apply.ts`
 
@@ -111,8 +112,7 @@ helper/
 - 由此推断（未实测）：已经打开过的浏览器带着 cookie，重启后仍然有效，这和 16.6「已打开的页面自动重连」一致；旧的 token 链接在新进程里会失效，但有 cookie 就不需要它。所以 0.1 **不需要固定 token**，前提是端口不变（cookie 绑 authority）。
 - **`--port 0` 与自动开浏览器**（10-19 核对 `bundle/web-app`）：不传 `--port` 时用固定默认端口 3080（`cordis.patch.yml:184`）；`--port 0` 由系统随机挑端口，每次启动都不同。另外 web 默认启动后会用**带新 token 的地址自动打开默认浏览器**（`openBrowser` 默认 true，`index.ts:202-235`；`--no-open` 或经 SSH 启动时不开）。因此：
   - 端口固定：已打开的页面靠 cookie 自动重连；重启时如果再自动开浏览器，会多出一个重复标签页。所以辅助进程重启时**追加 `--no-open`**。
-  - `--port 0`：端口变了，旧页面重连不上，cookie 也不再匹配。这时**保留自动开浏览器**（不加 `--no-open`），由新进程打开带新 token 的地址。用户会看到新开的标签页，旧标签页需要手动关。登记时提示一句「重启后会在新标签页打开」，仍然允许恢复。
-  - 原来就带 `--no-open` 或经 SSH 启动，且用的是 `--port 0`：没人替用户打开新地址。这时只能由辅助进程截取新进程 stdout 里的 URL，写进 `result.newUrl` 和 `helper.log`。登记时提示用户「重启后地址会变，请到终端或 helper.log 里查看」，仍然允许恢复。
+  - `--port 0`（用户 10-19 定：一般不用，**不做特殊处理，写进 README 已知局限**）：端口变了，旧页面重连不上，cookie 也不再匹配；按原参数重启，原本会自动开浏览器的就仍由新进程打开新地址，带 `--no-open` 的要用户自己从终端看新地址。重启时追加 `--no-open` 只在原参数没有 `--port 0` 时做。
 - 待验证：用旧 token 新开页面会怎样（预期是靠 cookie 进入，或者要求重新授权）。
 
 ### 4.5 启动对账（`host/reconcile.ts`，插件 apply 时）
@@ -162,6 +162,6 @@ profile 的判断：`ctx.get('profileContext')`（`apps/cli/src/profile-boot.ts`
 ## 8. 已定（用户 10-19）
 1. 桌面端 0.1 只做 apply，不自动重启：接受。
 2. 撤销：实现不复杂就做。按 §4.7，它复用还原引擎，所以做。
-3. `--port 0`：不拒绝，按 §4.4 处理。重启时端口固定就加 `--no-open`；端口随机则交给自动开浏览器，或者记录新地址。
+3. `--port 0`：一般不用，不做特殊处理，只写进 README 已知局限（§4.4）。
 
 暂无其他待定问题；审过后从 M1 开始写代码。
