@@ -23,9 +23,15 @@ import { pidAlive } from './core/lock.ts'
 import { newsnapRoot, resolveDshHome } from './core/paths.ts'
 import { assumeStoppedGuard, loadFlockGuard, type SessionGuard } from './core/session-guard.ts'
 import { cleanupPartials, listSnapshots } from './core/store.ts'
-import { formatTime } from './host/format.ts'
+import { formatBlocked, formatSnapshot, formatTime } from './host/format.ts'
+import { captureSnapshot, resolveTeamSessions } from './core/capture.ts'
+import { acquireLock } from './core/lock.ts'
+import { diskBlockers } from './core/preflight.ts'
+import { findTeamOfSession } from './core/teams.ts'
+import { sessionDir } from './core/paths.ts'
 
 const USAGE = `用法：
+  newsnap snap --session <id> [备注] [--cwd <dir>] [--dsh-stopped]
   newsnap list [--rescue] [--cwd <dir>]
   newsnap apply <id> [--rescue] [--cwd <dir>] [--dsh-stopped]
   newsnap resume | undo | rollback [--cwd <dir>] [--dsh-stopped]
@@ -72,6 +78,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       cwd: { type: 'string' },
       rescue: { type: 'boolean', default: false },
       'dsh-stopped': { type: 'boolean', default: false },
+      session: { type: 'string' },
       help: { type: 'boolean', short: 'h', default: false },
     },
   })
@@ -86,6 +93,40 @@ export async function main(argv: readonly string[]): Promise<number> {
   const kind = values.rescue ? 'rescue' : 'snapshot'
 
   switch (command) {
+    case 'snap': {
+      // 停机拍照：DSH 已退出时用（不需要冻结、刷盘）；会话写锁确认没人在写
+      const sessionId = typeof values.session === 'string' ? values.session : undefined
+      if (sessionId === undefined) {
+        out('用法：newsnap snap --session <队伍里任一会话 id> [备注] [--cwd <dir>]')
+        return 1
+      }
+      const guard = await guardFor(cwd, values['dsh-stopped'])
+      const team = await findTeamOfSession(cwd, sessionId)
+      if (team === undefined) {
+        out(`会话 ${sessionId} 不属于 ${cwd} 下的任何活动团队。`)
+        return 1
+      }
+      const ids = await resolveTeamSessions(home, cwd, team)
+      const releases: Array<() => Promise<void>> = []
+      const release = await acquireLock(layout(root).lock, 'snapshot')
+      try {
+        for (const s of ids) releases.push(await guard.acquire(sessionDir(home, s.cwd ?? undefined, s.id)))
+        const blockers = await diskBlockers(cwd, team)
+        const pending = await readPending(root)
+        if (pending !== undefined && ACTIVE_STATUSES.includes(pending.status)) blockers.push({ kind: 'restore-pending', detail: pending.status })
+        if (blockers.length > 0) {
+          out(formatBlocked(blockers))
+          return 1
+        }
+        const note = rest.join(' ').trim()
+        const m = await captureSnapshot({ home, cwd, team, ...(note !== '' && { note }), versions: { newsnap: 'cli', node: process.version } })
+        out(formatSnapshot(m))
+        return 0
+      } finally {
+        for (const r of releases.reverse()) await r().catch(() => undefined)
+        await release()
+      }
+    }
     case 'list': {
       const listing = await listSnapshots(home, cwd, kind)
       if (listing.items.length === 0) out(`${cwd} 没有${kind === 'rescue' ? '救援点' : '快照'}。`)

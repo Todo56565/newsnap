@@ -19,6 +19,7 @@ import { UnsupportedTeamState } from './core/teams.ts'
 import { LockBusy } from './core/lock.ts'
 import { NotATeamSession, SnapshotBlocked, takeSnapshot, teamFor, type HostRuntime } from './host/capture.ts'
 import { formatBlocked, formatList, formatSnapshot } from './host/format.ts'
+import { registerDevTool } from './host/dev-tool.ts'
 import { reconcile, type Notice } from './host/reconcile.ts'
 import { continueRestore, previewRestore, RestoreNotFound, RestoreUnsupported, startRestore, type Impact, type RestoreContext } from './host/restore.ts'
 
@@ -163,6 +164,8 @@ export function apply(ctx: Context): void {
       handler: run,
     }), 'newsnap: slash command')
   })
+
+  registerDevTool(ctx, run)
 
   // 启动对账 + 清理所有工作区根下的拍照残骸
   void reconcile(home).then((found) => {
