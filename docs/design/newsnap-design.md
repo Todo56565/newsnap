@@ -241,8 +241,9 @@ DeepSeek 官方《Context Caching》（api-docs.deepseek.com/guides/kv_cache，2
 
 3. 恢复方式（10-19 定）：先做 B（一键自动重启），C（克隆成新会话 id）作为后续方案再验证；A 不用，D 暂不考虑。见 §14。
 
-待定：
-7. §6.1「内存状态落盘」：见 §15，倾向改成「从会话日志投影推导」，落在 dsh-token-budget；待讨论。
+7. §6.1「内存状态落盘」（10-19 定）：交给 dsh-token-budget 0.6.0 的 E5b（用 `appendPluginRecord` 把换窗状态与 hideDecisions 写进会话日志），newsnap 不做；见 §15 与 make-the-plugin `docs/design/0.5.0.md` E5。
+
+待定：（无）
 
 ## 14. 恢复方式备选（回应 §13-3）
 
