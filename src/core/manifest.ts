@@ -73,6 +73,8 @@ export interface RelaunchSpec {
   readonly argv: readonly string[]
   readonly cwd: string
   readonly profile: string
+  /** headless 续接用：重启时加 `--session-id`。 */
+  readonly sessionId?: string
 }
 
 export interface PendingRestore {
@@ -85,6 +87,8 @@ export interface PendingRestore {
   /** 不自动重启（桌面端等）时为 null。 */
   readonly relaunch: RelaunchSpec | null
   readonly createdAt: number
+  /** 正在执行这次恢复的辅助进程（启动对账判断它是否还活着）。 */
+  readonly helperPid?: number
   readonly result?: { readonly ok: boolean; readonly message: string; readonly at: number }
 }
 
@@ -119,6 +123,7 @@ export function validateManifest(value: unknown): SnapManifest {
   need(value.kind === 'snapshot' || value.kind === 'rescue', 'kind invalid')
   need(value.restoreOf === undefined || isStr(value.restoreOf), 'restoreOf invalid')
   need(isNum(value.createdAt), 'createdAt missing')
+  need(value.helperPid === undefined || isNum(value.helperPid), 'helperPid invalid')
   need(value.note === undefined || isStr(value.note), 'note invalid')
   need(isStr(value.cwd) && value.cwd !== '', 'cwd missing')
   const team = value.team
@@ -158,10 +163,11 @@ export function validatePending(value: unknown): PendingRestore {
   }
   const r = value.relaunch
   need(
-    r === null || (isRecord(r) && isStr(r.execPath) && isStrArray(r.execArgv) && isStrArray(r.argv) && isStr(r.cwd) && isStr(r.profile)),
+    r === null || (isRecord(r) && isStr(r.execPath) && isStrArray(r.execArgv) && isStrArray(r.argv) && isStr(r.cwd) && isStr(r.profile) && (r.sessionId === undefined || isStr(r.sessionId))),
     'relaunch invalid',
   )
   need(isNum(value.createdAt), 'createdAt missing')
+  need(value.helperPid === undefined || isNum(value.helperPid), 'helperPid invalid')
   const res = value.result
   need(res === undefined || (isRecord(res) && typeof res.ok === 'boolean' && isStr(res.message) && isNum(res.at)), 'result invalid')
   return value as unknown as PendingRestore

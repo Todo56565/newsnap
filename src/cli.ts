@@ -17,7 +17,7 @@ import { readFile } from 'node:fs/promises'
 import { dirname, resolve } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { parseArgs } from 'node:util'
-import { ACTIVE_STATUSES, registerRestore, runApply, runRollback } from './core/apply.ts'
+import { ACTIVE_STATUSES, lastApplied, registerRestore, runApply, runRollback } from './core/apply.ts'
 import { layout, readPending } from './core/manifest.ts'
 import { pidAlive } from './core/lock.ts'
 import { newsnapRoot, resolveDshHome } from './core/paths.ts'
@@ -110,8 +110,8 @@ export async function main(argv: readonly string[]): Promise<number> {
       return report(await runApply({ home, cwd, guard }))
     }
     case 'undo': {
-      const pending = await readPending(root)
-      if (pending?.rescueId === undefined || pending.status !== 'applied') {
+      const pending = await lastApplied(home, cwd)
+      if (pending?.rescueId === undefined) {
         out('没有可撤销的恢复（需要最近一次恢复已成功）。')
         return 1
       }

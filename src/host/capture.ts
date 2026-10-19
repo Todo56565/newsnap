@@ -4,6 +4,7 @@
  * @module newsnap/host/capture
  */
 
+import { ACTIVE_STATUSES } from '../core/apply.ts'
 import { captureSnapshot, resolveTeamSessions } from '../core/capture.ts'
 import { acquireLock } from '../core/lock.ts'
 import { layout, readPending, type SnapManifest } from '../core/manifest.ts'
@@ -48,10 +49,11 @@ export async function teamFor(cwd: string, sessionId: string): Promise<TeamSumma
   return team
 }
 
-async function blockers(host: HostRuntime, params: TakeSnapshotParams, team: TeamSummary, ids: readonly string[]): Promise<Blocker[]> {
+export async function blockers(host: HostRuntime, params: { home: string; cwd: string }, team: TeamSummary, ids: readonly string[]): Promise<Blocker[]> {
   const out = await diskBlockers(params.cwd, team)
   for (const id of ids) if (host.agentStatus(id) === 'running') out.push({ kind: 'session-busy', detail: id })
-  if ((await readPending(newsnapRoot(params.home, params.cwd))) !== undefined) {
+  const pending = await readPending(newsnapRoot(params.home, params.cwd))
+  if (pending !== undefined && ACTIVE_STATUSES.includes(pending.status)) {
     out.push({ kind: 'restore-pending', detail: 'a restore is registered' })
   }
   return out

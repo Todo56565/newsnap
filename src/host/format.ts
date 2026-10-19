@@ -38,11 +38,11 @@ export function formatSnapshot(m: SnapManifest): string {
   return lines.join('\n')
 }
 
-export function formatBlocked(blockers: readonly Blocker[]): string {
+export function formatBlocked(blockers: readonly Blocker[], action = '拍快照'): string {
   const groups = new Map<Blocker['kind'], string[]>()
   for (const b of blockers) groups.set(b.kind, [...(groups.get(b.kind) ?? []), b.detail])
   const parts = [...groups].map(([kind, details]) => `${REASONS[kind]}（${details.join('、')}）`)
-  return `现在不能拍快照：${parts.join('；')}。等团队空闲后再试。`
+  return `现在不能${action}：${parts.join('；')}。等团队空闲后再试。`
 }
 
 export function formatList(team: TeamSummary, listing: Listing): string {

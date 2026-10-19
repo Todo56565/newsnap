@@ -21,7 +21,7 @@ import { join } from 'node:path'
 import { agentTeamsFilter, captureSnapshot } from './capture.ts'
 import { readJson, sha256File, writeJsonAtomic } from './fsutil.ts'
 import { acquireLock } from './lock.ts'
-import { layout, readManifest, readPending, writePending, type PendingRestore, type RestoreStep, type SnapManifest } from './manifest.ts'
+import { layout, readManifest, readPending, validatePending, writePending, type PendingRestore, type RestoreStep, type SnapManifest } from './manifest.ts'
 import { agentTeamsRoot, encodeSegment, listGenerations, newsnapRoot, parseGeneration, sessionDir } from './paths.ts'
 import { restoreWorkspace, workspaceMatches, DEFAULT_MAX_FILE_BYTES } from './shadow-git.ts'
 import type { SessionGuard } from './session-guard.ts'
@@ -322,6 +322,29 @@ export async function archivePending(home: string, cwd: string): Promise<string 
   const to = join(L.history, `pending-${pending.createdAt}-${pending.target.kind}-${pending.target.id}.json`)
   await rename(L.pending, to)
   return to
+}
+
+/** 最近一次成功的恢复（当前登记或 history/ 里最新的一份），撤销用。 */
+export async function lastApplied(home: string, cwd: string): Promise<PendingRestore | undefined> {
+  const root = newsnapRoot(home, cwd)
+  const current = await readPending(root).catch(() => undefined)
+  if (current !== undefined) return current.status === 'applied' ? current : undefined
+  let names: string[] = []
+  try {
+    names = await readdir(layout(root).history)
+  } catch {
+    return undefined
+  }
+  let best: PendingRestore | undefined
+  for (const name of names) {
+    try {
+      const p = validatePending(await readJson(join(layout(root).history, name)))
+      if (best === undefined || p.createdAt > best.createdAt) best = p
+    } catch {
+      // 跳过
+    }
+  }
+  return best?.status === 'applied' ? best : undefined
 }
 
 /** 登记一次恢复。已有进行中的登记就拒绝；已结束的先归档。 */
