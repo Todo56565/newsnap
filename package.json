@@ -1,0 +1,24 @@
+{
+  "name": "newsnap",
+  "version": "0.1.0-dev",
+  "private": true,
+  "description": "DSH + dsh-agent-teams 团队时间回溯插件：整队快照与一键恢复",
+  "type": "module",
+  "license": "UNLICENSED",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Todo56565/newsnap.git"
+  },
+  "engines": {
+    "node": "^22.19.0 || >=24"
+  },
+  "scripts": {
+    "build": "rm -rf lib && tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "node --test --experimental-strip-types \"test/**/*.test.ts\""
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.9.0"
+  }
+}
