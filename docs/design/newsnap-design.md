@@ -237,10 +237,10 @@ DeepSeek 官方《Context Caching》（api-docs.deepseek.com/guides/kv_cache，2
 4. newsnap 仓库权限已好，本稿迁入 newsnap。
 6. 所有文件都回退（§1c）。
 8. fork：newsnap 替代 fork，不做适配。
+5. 全文去重（10-19 与另一边讨论后定）：dsh-token-budget 自身问题，选 A 按状态分键——completed/failed 用 `…:<attempt>:<attemptId 前 8 位>`（agent-teams v0.1.25 中这两种终态的 attemptId 必非空且不再变），cancelled 保持现键（不进待合并，撞键只少一条取消记录）；快照目录同步改 `a<attempt>-<id8>`，`ended.ts` 目录反推须同一提交修；不写旧数据兼容。放哪一版随 §13-7。newsnap 不依赖此项。
 
 待定：
 3. **恢复方式**：用户不太接受「停机 + 命令行」，见 §14 备选。
-5. 全文去重 A/B：降为 dsh-token-budget 自身问题，与另一边讨论。
 7. §6.1「内存状态落盘」：见 §15，倾向改成「从会话日志投影推导」，落在 dsh-token-budget；待讨论。
 
 ## 14. 恢复方式备选（回应 §13-3）
