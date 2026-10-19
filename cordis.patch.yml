@@ -1,0 +1,5 @@
+# newsnap bundle patch：把 newsnap 插件挂进 dsh profile 的宿主组合。
+# 安装：`dsh plugin --profile <name> add <本包路径或包名>`。
+- insert:
+    - id: newsnap
+      name: 'newsnap'
