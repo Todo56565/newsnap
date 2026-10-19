@@ -77,10 +77,10 @@ helper/
 | 1 | lock | 拿 newsnap 自己的 lock；再逐个会话试 `flock session.lock`，**拿不到就中止，什么都不改**（判断 DSH 是否真退了，16.5 证明父进程退出后一定拿得到） |
 | 2 | rescue | 把当前会话目录、`.agent-teams` 相关部分、工作区（影子提交 + mtime 清单）做成救援点 |
 | 3 | sessions | 换成快照里的代文件，删掉编号更高的代；快照后新增的本队会话整目录移进救援点 |
-| 4 | teams | 解 tar，覆盖 `.agent-teams/<teamId>`、`archive/<teamId>`、`.context/`；调整 `retired-members.json` 里本队成员的 id；比对 `mergeSnapshotPicks`，不一致只记警告 |
+| 4 | teams | 按清单复制回去，覆盖 `.agent-teams/<teamId>`、`archive/<teamId>`、`.context/`；调整 `retired-members.json` 里本队成员的 id；比对 `mergeSnapshotPicks`，不一致只记警告 |
 | 5 | workspace | 在**会话 cwd** 下 `git restore` + 删除快照后新增、且未被忽略的文件 + 还原 mtime |
 | 6 | projcache | 删除这些会话在 `storages/session_projcache` 里的记录 |
-| 7 | verify | 会话文件 sha256、tar 里的文件、工作区与影子提交逐一比对 |
+| 7 | verify | 会话文件 sha256、.agent-teams 清单、工作区与影子提交逐一比对 |
 | 8 | release | 释放锁，status = applied |
 
 - 第 3–7 步任一失败：自动用救援点回滚（同一引擎反向执行，从救援点还原），status = failed，`result.message` 写原因。回滚本身也失败时 status 留在 applying，交给 `newsnap doctor`。
@@ -146,7 +146,7 @@ profile 的判断：`ctx.get('profileContext')`（`apps/cli/src/profile-boot.ts`
 - 两个插件互不依赖；同时装时，加载顺序没有要求。
 
 ## 6. 测试
-1. **单测（core/，不需要 DSH）**：paths、manifest 读写、mtime 往返、tar 往返、影子 Git 在临时仓库上 snap/restore；apply 引擎在构造的目录上覆盖以下情况：每一步后中断再续做、第 5 步失败后回滚、锁拿不到时零改动。
+1. **单测（core/，不需要 DSH）**：paths、manifest 读写、mtime 往返、目录树复制往返、影子 Git 在临时仓库上 snap/restore；apply 引擎在构造的目录上覆盖以下情况：每一步后中断再续做、第 5 步失败后回滚、锁拿不到时零改动。
 2. **headless e2e（mock，不花额度）**：复用 `poc/restart-b`，跑「拍照 → 继续一轮 → 恢复 → 自动重启 → 续一轮」，比对 mock 记录的请求前缀。
 3. **网页 e2e（mock + Playwright）**：复用 `poc/restart-b/snapweb*.mjs`，加上旧 token 新开页面的用例。
 4. **真跑一次（需用户批准）**：队长 + 1 名成员，检查 `prompt_cache_hit_tokens`，并确认 agent-teams 不会重派任务。
