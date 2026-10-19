@@ -272,4 +272,4 @@ DSH 的限制与原因（原因为根据源码注释与结构的推断）：
 | 常驻说明冻结值 | 首次算出的说明文本 | 只取决于角色与开关，通常相同 | 不必 |
 | E1 hideDecisions | 子会话第一次决定是否隐藏工具 | 重算可能不同 → 工具列表变，缓存整段失效 | 难：工具列表不进日志；要么落小文件，要么只用不变的事实判定 |
 
-倾向：照 E4 `handoffSent` 的做法，把前三项改成**从会话日志投影推导**（日志就是游标），落在 dsh-token-budget 自己身上。这样普通重启、newsnap、单会话回退插件、方案 C 的新 id 会话都自动正确，newsnap 不用做任何事。只有 hideDecisions 另定。是否放进 0.5.0 待讨论。
+10-19 更新：dsh-token-budget 0.5.0 草案 E5b 改为用 DSH 实验接口 `appendPluginRecord` 把这些状态写成会话日志里的插件记录（不进模型可见面），hideDecisions 也能一并解决；见 make-the-plugin `docs/design/0.5.0.md` E5（adc204b）。原倾向：照 E4 `handoffSent` 的做法，把前三项改成**从会话日志投影推导**（日志就是游标），落在 dsh-token-budget 自己身上。这样普通重启、newsnap、单会话回退插件、方案 C 的新 id 会话都自动正确，newsnap 不用做任何事。只有 hideDecisions 另定。是否放进 0.5.0 待讨论。
