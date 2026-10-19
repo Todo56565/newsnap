@@ -176,6 +176,7 @@ export function layout(root: string) {
     rescue: join(root, 'rescue'),
     pending: join(root, PENDING_FILE),
     lock: join(root, 'lock'),
+    history: join(root, 'history'),
     snapDir: (id: string) => join(root, 'snaps', id),
     rescueDir: (id: string) => join(root, 'rescue', id),
   }

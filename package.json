@@ -6,6 +6,9 @@
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
+  "bin": {
+    "newsnap": "bin/newsnap.mjs"
+  },
   "exports": {
     ".": {
       "types": "./lib/types/index.d.ts",
@@ -16,6 +19,7 @@
   },
   "files": [
     "lib",
+    "bin",
     "cordis.patch.yml",
     "README.md"
   ],

@@ -309,6 +309,72 @@ export async function runApply(params: ApplyParams): Promise<ApplyOutcome> {
   }
 }
 
+export const ACTIVE_STATUSES: readonly PendingRestore['status'][] = ['registered', 'exiting', 'applying']
+
+/** 把已结束的登记挪进 history/（启动对账展示过、或新登记覆盖前）。 */
+export async function archivePending(home: string, cwd: string): Promise<string | undefined> {
+  const root = newsnapRoot(home, cwd)
+  const L = layout(root)
+  const pending = await readPending(root)
+  if (pending === undefined) return undefined
+  if (ACTIVE_STATUSES.includes(pending.status)) throw new ApplyRefused(`a restore is still ${pending.status}`)
+  await mkdir(L.history, { recursive: true })
+  const to = join(L.history, `pending-${pending.createdAt}-${pending.target.kind}-${pending.target.id}.json`)
+  await rename(L.pending, to)
+  return to
+}
+
+/** 登记一次恢复。已有进行中的登记就拒绝；已结束的先归档。 */
+export async function registerRestore(params: {
+  home: string
+  cwd: string
+  target: PendingRestore['target']
+  relaunch: PendingRestore['relaunch']
+  now?: number
+}): Promise<PendingRestore> {
+  const root = newsnapRoot(params.home, params.cwd)
+  const m = await mustManifest(targetDir(root, params.target))
+  if (m.cwd !== params.cwd) throw new ApplyRefused(`snapshot belongs to ${m.cwd}, not ${params.cwd}`)
+  await archivePending(params.home, params.cwd)
+  const pending: PendingRestore = {
+    schema: 1, target: params.target, status: 'registered', steps: initialSteps(), relaunch: params.relaunch,
+    createdAt: params.now ?? Date.now(),
+  }
+  await writePending(root, pending)
+  return pending
+}
+
+/**
+ * 卡在 applying（回滚也失败、或进程中途死掉）时的手动回滚：直接用该次的救援点还原，不再建新救援点。
+ * 成功后 status = rolled-back。
+ */
+export async function runRollback(params: ApplyParams): Promise<string> {
+  const now = params.now ?? Date.now
+  const root = newsnapRoot(params.home, params.cwd)
+  const L = layout(root)
+  const pending = await readPending(root)
+  if (pending === undefined || pending.status !== 'applying') throw new ApplyRefused('nothing to roll back: no restore is stuck in applying')
+  if (pending.rescueId === undefined) {
+    // 救援点还没建成：第 3 步还没开始，现场没被动过
+    await writePending(root, { ...pending, status: 'rolled-back', result: { ok: false, message: 'aborted before any change', at: now() } })
+    return 'nothing had been changed yet'
+  }
+  const rescue = await mustManifest(L.rescueDir(pending.rescueId))
+  const target = await mustManifest(targetDir(root, pending.target))
+  const releases: Array<() => Promise<void>> = [await acquireLock(L.lock, 'rollback')]
+  try {
+    for (const s of [...rescue.sessions, ...target.sessions]) {
+      releases.push(await params.guard.acquire(sessionDir(params.home, s.cwd ?? undefined, s.id)))
+    }
+    await restoreUnit(params, L.rescueDir(rescue.snapId), rescue, target, 'rollback', async () => undefined)
+    const message = `rolled back to rescue point ${rescue.snapId}`
+    await writePending(root, { ...pending, status: 'rolled-back', result: { ok: true, message, at: now() } })
+    return message
+  } finally {
+    for (const r of releases.reverse()) await r().catch(() => undefined)
+  }
+}
+
 /** 扫描 `.agent-teams` 相关部分（doctor、测试用）。 */
 export function scanUnit(cwd: string, teamId: string) {
   return scanTree(agentTeamsRoot(cwd), { exclude: agentTeamsFilter(teamId) })

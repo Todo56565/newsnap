@@ -151,3 +151,21 @@ test('会话写锁拿不到：零改动，pending 不变', async () => {
   // 锁已释放：之后能正常跑
   assert.equal((await runApply({ home, cwd, guard })).status, 'applied')
 })
+
+test('registerRestore 归档已结束的登记、拒绝进行中的；runRollback 解开卡住的 applying', async () => {
+  const { registerRestore, runRollback } = await import('../../src/core/apply.ts')
+  const { home, cwd, team } = await world()
+  await captureSnapshot({ home, cwd, team, id: 's1' })
+  await mutate(home, cwd)
+  const mutated = await fingerprint(home, cwd)
+  await registerRestore({ home, cwd, target: { kind: 'snapshot', id: 's1' }, relaunch: null, now: 5 })
+  await assert.rejects(registerRestore({ home, cwd, target: { kind: 'snapshot', id: 's1' }, relaunch: null }), ApplyRefused)
+  await assert.rejects(registerRestore({ home, cwd, target: { kind: 'snapshot', id: 'nope' }, relaunch: null }), ApplyRefused)
+  await assert.rejects(runApply({ home, cwd, guard, faultBefore: (s) => { if (s === 'verify') throw new Error('x') } }), /rollback also failed/)
+  assert.equal((await readPending(newsnapRoot(home, cwd)))?.status, 'applying')
+  assert.match(await runRollback({ home, cwd, guard }), /rolled back/)
+  assert.deepEqual(await fingerprint(home, cwd), mutated)
+  assert.equal((await readPending(newsnapRoot(home, cwd)))?.status, 'rolled-back')
+  await registerRestore({ home, cwd, target: { kind: 'snapshot', id: 's1' }, relaunch: null, now: 6 })
+  assert.deepEqual(await readdir(layout(newsnapRoot(home, cwd)).history), ['pending-5-snapshot-s1.json'])
+})
