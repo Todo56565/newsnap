@@ -1,6 +1,6 @@
 # newsnap：团队时间回溯 设计草稿
 
-> 状态：**草稿，待用户审**（2026-10-18）。未写实现代码、未做 PoC。
+> 状态：**草稿，待用户审**（2026-10-18）。§13 待定已清零；方案 B PoC 见 §16。**实现设计见 [`implementation-0.1.md`](implementation-0.1.md)（10-19），其 §4 取代本文 §4 的停机恢复。**
 > 定位：单独插件 newsnap（仓库 `Todo56565/newsnap`；2026-10-19 从 make-the-plugin 迁入），另对 dsh-token-budget 与 agent-teams 做少量适配。
 > 源码基线：deepseek-harness `dsh-v0.2.1-rc.2`（`687f282e`）、dsh-agent-teams `v0.1.25`（`cf11157`）、dsh-token-budget `0b155a6`（含 0.5.0 E1 简化版/E4）。下文 `包/文件:行` 均指这些版本。
 > 构想与初步可行性见 [`future-council.md`](https://github.com/Todo56565/make-the-plugin/blob/main/docs/design/future-council.md)。
