@@ -274,3 +274,31 @@ DSH 的限制与原因（原因为根据源码注释与结构的推断）：
 | E1 hideDecisions | 子会话第一次决定是否隐藏工具 | 重算可能不同 → 工具列表变，缓存整段失效 | 难：工具列表不进日志；要么落小文件，要么只用不变的事实判定 |
 
 10-19 更新：dsh-token-budget 0.5.0 草案 E5b 改为用 DSH 实验接口 `appendPluginRecord` 把这些状态写成会话日志里的插件记录（不进模型可见面），hideDecisions 也能一并解决；见 make-the-plugin `docs/design/0.5.0.md` E5（adc204b）。原倾向：照 E4 `handoffSent` 的做法，把前三项改成**从会话日志投影推导**（日志就是游标），落在 dsh-token-budget 自己身上。这样普通重启、newsnap、单会话回退插件、方案 C 的新 id 会话都自动正确，newsnap 不用做任何事。只有 hideDecisions 另定。是否放进 0.5.0 待讨论。
+
+## 16. 方案 B（一键自动重启）PoC 方案（10-19，待验证）
+
+### 16.1 源码核对（DSH 0.2.1-rc.2，参考源码 `/workspace/work/ref/dsh`）
+- **appExit(code)**：`packages/boot/cmdline/src/index.ts` 的 `provideCmdline()` 在插件树挂载前提供给所有 profile；`apps/cli/src/profile-boot.ts:336` 接到 `shutdown.shutdown(code)`，即有序退出（卸插件树 → 日志落盘 → 释放租约）。插件用 `ctx.get('appExit')` 读，不列 inject（嵌入式宿主可能没有）。
+- **cmdlineArgs**：只含内层参数（`dsh --profile tui --resume abc` → `['--resume','abc']`），不含 `--profile` / `--patch`。重新拉起用 `process.execPath` + `process.execArgv` + `process.argv.slice(1)`，并带原 cwd 与 env（`DSH_HOME` 等）。
+- **租约**：`packages/session/session-persistence-jsonl/src/lease.ts`，POSIX 对会话目录的 `session.lock` 做非阻塞 flock，Windows 用命名内核信号量；持有者进程死亡由内核释放，无过期。辅助进程只需等父 pid 退出，跨平台且不依赖 native addon；可选再试 flock 一次确认。
+
+### 16.2 PoC 步骤（headless + 本地 mock，不调真实模型）
+1. PoC 插件注册一个工具：`spawn(process.execPath, [helper.mjs, …], { detached: true, stdio: 'ignore' }).unref()`，传父 pid、原始 argv、cwd、会话 id；随后 `ctx.get('appExit')(0)`。
+2. 辅助进程轮询 `process.kill(pid, 0)` 直到 ESRCH（超时 30 s 放弃并留日志）。
+3. 假 apply：还原一个文件并写标记文件（真 apply 见 §1c）。
+4. 用原参数重新拉起 DSH，续接同一会话（headless 用 `--session-id <id>`）。
+5. 验证：新进程拿到租约无 `SessionAlreadyOwnedError`；文件已回退；会话续上；下一次请求前缀与重启前逐字相同（对比 mock 记录的请求体）。
+
+### 16.3 环境（可复用）
+- dsh 可执行：`/workspace/work/poc-e5b/node_modules/.bin/dsh`（0.2.1-rc.2）。
+- mock：`node /workspace/work/poc-e5b/mock.mjs`（Anthropic Messages，端口 18889，请求记在同目录 `mock.log`）。
+- 运行：`DSH_HOME=<home> DEEPSEEK_BASE_URL=http://127.0.0.1:18889 DEEPSEEK_API_KEY=sk-fake dsh --profile headless --json "…"`。
+- 插件装法：`<home>/profiles/headless/package.json` 写 `dependencies` 指向本地目录（`file:`），`dsh.profile.bundles` 加上包名，然后 `pnpm install --ignore-scripts`；参考 `/workspace/work/poc-e5b/home`、`/workspace/work/hl-tb/home`。插件包需 `keywords: ["dsh-plugin"]` 与 `dsh.bundle.patch`。
+- headless 没有 `agentPresets` 服务，PoC 插件不要 inject 它。
+- 停 mock 用 pid（`ss -ltnp | grep 18889`），不要用 `pkill -f`。
+
+### 16.4 风险与待查
+- **TUI（推断，未验证）**：父进程退出后终端回到 shell，后台子进程再读终端会收到 SIGTTIN 被挂起，辅助进程可能拿不回终端。备选 **B'**：外层启动器（如 `newsnap run -- dsh …`）包一层，DSH 以约定退出码退出时由它 apply 并重启；用户要改启动方式，但仍是一键。headless 跑通后单独测 TUI。
+- **续接参数**：TUI、网页端怎么指定续接哪个会话，待查。
+- **网页 / 服务模式**：端口不变、客户端自动重连，待查。
+- **前提**：团队空闲；有进行中任务直接拒绝（§13-2）。
