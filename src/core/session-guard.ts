@@ -1,14 +1,16 @@
 /**
  * 会话写锁探测（实现设计 §3 第 1 步）：apply 前逐个会话试拿宿主的写锁，拿不到说明 DSH 还在写，什么都不改。
  * 宿主在 POSIX 上对 `session.lock` 做非阻塞 flock(2)（session-persistence-jsonl lease.ts），
- * 由原生模块 `@deepseek-ai/node-addon-system/flock` 提供；Windows 用命名信号量，0.1 不支持。
+ * 由原生模块 `@deepseek-ai/node-addon-system/flock` 提供；Windows 上宿主改用命名信号量
+ * `Local\\dsh-session-lock-<sha256(resolve(lockPath).toLowerCase())>`（session-persistence-jsonl win32.ts，经 koffi 调 kernel32）。
  * newsnap 不自带原生模块：能从 DSH 的安装里加载就用，否则调用方须显式确认 DSH 已退出。
  * @module newsnap/core/session-guard
  */
 
+import { createHash } from 'node:crypto'
 import { open, stat } from 'node:fs/promises'
 import { createRequire } from 'node:module'
-import { join } from 'node:path'
+import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { SESSION_LOCK_FILE } from './paths.ts'
 
@@ -51,6 +53,50 @@ export function flockGuard(tryLockExclusive: TryLock): SessionGuard {
   }
 }
 
+/** Windows 宿主用的信号量名（与 DSH acquireLockHandleWin32 一致）。 */
+export function win32LockName(lockPath: string): string {
+  return `Local\\dsh-session-lock-${createHash('sha256').update(resolve(lockPath).toLowerCase()).digest('hex')}`
+}
+
+export interface Win32SemaphoreApi {
+  createSemaphoreW(security: null, initial: number, maximum: number, name: string): number
+  waitForSingleObject(handle: number, milliseconds: number): number
+  releaseSemaphore(handle: number, count: number, previous: null): number
+  closeHandle(handle: number): number
+  getLastError(): number
+}
+
+const WAIT_OBJECT_0 = 0
+const WAIT_TIMEOUT = 0x102
+
+/** 用 Windows 命名信号量实现的守卫：不等待地试拿，WAIT_TIMEOUT 说明宿主还持有。 */
+export function semaphoreGuard(api: Win32SemaphoreApi): SessionGuard {
+  return {
+    kind: 'win32-semaphore',
+    async acquire(dir) {
+      try {
+        await stat(dir)
+      } catch {
+        return async () => undefined
+      }
+      const name = win32LockName(join(dir, SESSION_LOCK_FILE))
+      const handle = api.createSemaphoreW(null, 1, 1, name)
+      if (handle === 0) throw new Error(`CreateSemaphoreW failed (${api.getLastError()}) for ${name}`)
+      const wait = api.waitForSingleObject(handle, 0)
+      if (wait !== WAIT_OBJECT_0) {
+        const err = api.getLastError()
+        api.closeHandle(handle)
+        if (wait === WAIT_TIMEOUT) throw new SessionBusy(`session at ${dir} is still open in DSH`)
+        throw new Error(`WaitForSingleObject failed (${err}) for ${name}`)
+      }
+      return async () => {
+        api.releaseSemaphore(handle, 1, null)
+        api.closeHandle(handle)
+      }
+    },
+  }
+}
+
 /** 调用方已确认 DSH 退出（例如辅助进程等到父进程消失、或用户在命令行加了确认参数）。 */
 export function assumeStoppedGuard(reason: string): SessionGuard {
   return { kind: `assume-stopped(${reason})`, acquire: async () => async () => undefined }
@@ -61,13 +107,37 @@ export function assumeStoppedGuard(reason: string): SessionGuard {
  * searchFrom：用于 require.resolve 的起点（DSH 安装目录、process.argv[1] 等）。
  */
 export async function loadFlockGuard(searchFrom: readonly string[]): Promise<SessionGuard | undefined> {
-  if (process.platform === 'win32') return undefined
+  if (process.platform === 'win32') return loadSemaphoreGuard(searchFrom)
   for (const from of searchFrom) {
     try {
       const require = createRequire(from.endsWith('/') ? from : `${from}/`)
       const resolved = require.resolve('@deepseek-ai/node-addon-system/flock')
       const mod = (await import(pathToFileURL(resolved).href)) as { tryLockExclusive?: TryLock }
       if (typeof mod.tryLockExclusive === 'function') return flockGuard(mod.tryLockExclusive)
+    } catch {
+      // 换下一个位置
+    }
+  }
+  return undefined
+}
+
+/** Windows：从 DSH 安装里加载 koffi（宿主自己就靠它调 kernel32），绑定信号量 API。 */
+async function loadSemaphoreGuard(searchFrom: readonly string[]): Promise<SessionGuard | undefined> {
+  for (const from of searchFrom) {
+    try {
+      const require = createRequire(join(from, 'x.js'))
+      const resolved = require.resolve('koffi')
+      const mod = (await import(pathToFileURL(resolved).href)) as { default?: unknown }
+      const koffi = (mod.default ?? mod) as { load(lib: string): { func(conv: string, name: string, ret: string, args: string[]): (...a: unknown[]) => number } }
+      const k = koffi.load('kernel32.dll')
+      const api: Win32SemaphoreApi = {
+        createSemaphoreW: k.func('__stdcall', 'CreateSemaphoreW', 'intptr', ['void*', 'int', 'int', 'str16']) as Win32SemaphoreApi['createSemaphoreW'],
+        waitForSingleObject: k.func('__stdcall', 'WaitForSingleObject', 'uint', ['intptr', 'uint']) as Win32SemaphoreApi['waitForSingleObject'],
+        releaseSemaphore: k.func('__stdcall', 'ReleaseSemaphore', 'int', ['intptr', 'int', 'void*']) as Win32SemaphoreApi['releaseSemaphore'],
+        closeHandle: k.func('__stdcall', 'CloseHandle', 'int', ['intptr']) as Win32SemaphoreApi['closeHandle'],
+        getLastError: k.func('__stdcall', 'GetLastError', 'uint', []) as Win32SemaphoreApi['getLastError'],
+      }
+      return semaphoreGuard(api)
     } catch {
       // 换下一个位置
     }

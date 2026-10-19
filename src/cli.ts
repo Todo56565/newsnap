@@ -63,7 +63,7 @@ async function guardFor(cwd: string, dshStopped: boolean): Promise<SessionGuard>
   const flock = await loadFlockGuard(flockSearchDirs(cwd))
   if (flock !== undefined) return flock
   if (dshStopped) return assumeStoppedGuard('--dsh-stopped')
-  throw new Error('找不到 DSH 的 flock 模块，无法确认 DSH 已退出。请先关掉 DSH，再加 --dsh-stopped 重试（或设置 NEWSNAP_DSH_DIR 指向 DSH 安装目录）。')
+  throw new Error('找不到 DSH 的会话锁模块（POSIX 为 flock，Windows 为 koffi），无法确认 DSH 已退出。请先关掉 DSH，再加 --dsh-stopped 重试（或设置 NEWSNAP_DSH_DIR 指向 DSH 安装目录）。')
 }
 
 function out(line = ''): void {

@@ -80,7 +80,7 @@ export function apply(ctx: Context): void {
         const root = newsnapRoot(home, cwd)
         mkdirSync(root, { recursive: true })
         const child = spawn(process.execPath, [...(HELPER.endsWith('.ts') ? ['--experimental-strip-types'] : []), HELPER, home, cwd, String(process.pid), mode], {
-          detached: true, stdio: 'ignore', cwd: root, env: { ...process.env, NEWSNAP_HELPER: '1' },
+          detached: true, windowsHide: true, stdio: 'ignore', cwd: root, env: { ...process.env, NEWSNAP_HELPER: '1' },
         })
         child.unref()
         return child.pid

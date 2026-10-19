@@ -84,7 +84,7 @@ export async function runHelper(home: string, cwd: string, parentPid: number, mo
   if (relaunch !== null) {
     const cmd = relaunchCommand(relaunch, message)
     await log(`relaunch: ${cmd.file} ${JSON.stringify(cmd.args)} (cwd ${cmd.cwd})`)
-    const child = spawn(cmd.file, cmd.args, { cwd: cmd.cwd, detached: true, stdio: 'ignore', env: process.env })
+    const child = spawn(cmd.file, cmd.args, { cwd: cmd.cwd, detached: true, windowsHide: true, stdio: 'ignore', env: process.env })
     child.unref()
     await log(`relaunched pid ${child.pid}`)
   }
