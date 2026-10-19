@@ -140,6 +140,12 @@ profile 的判断：`ctx.get('profileContext')`（`apps/cli/src/profile-boot.ts`
 - 面板：快照列表下方列出最近的救援点（保留 7 天，总设计 §8），每个都能「恢复到此」；恢复成功后的提示条上放「撤销」，作为最近那个救援点的快捷入口。
 - 工作量：只多一个列表区和一个按钮，所以放进 M5 一起做。
 
+## 4.8 M2 实现中发现、待 e2e 验证的点
+- **斜杠命令写进日志**：`/newsnap snap` 调用时，宿主先写 `command/run` 再调 handler，返回后才写 `command/done`（`interaction/commands` index.ts:335）。所以快照里调用者会话的结尾是一条没有配对的 `command/run`。两种事件只写日志，不进模型请求，不影响前缀；但恢复后界面怎么显示这条未配对的命令需要实测。会话头按钮走 HTTP 路由，不写日志，没有这个问题（M5）。
+- **事件缓冲**：宿主的追加事件先进缓冲，到检查点才落盘。拍照前对每个已加载会话调用 `ctx.sessions.flush(session)`（dsh-session SessionStore.flush），再复制文件。
+- **冻结期间的 reject**：冻结时 pre-step 返回 `reject`，这时来的步骤会被拒绝。agent-teams 自己也用 reject 做准入，信件投递失败会释放租约、稍后重试；拍照通常只要几秒。需要实测，确认不会丢信。
+- **会话根目录**：按默认配置 `dshHomePath('sessions')` 计算。用户如果在 profile 里改了会话根目录，newsnap 会找不到会话，拍照时报 SessionMissing。0.1 先列为局限。
+
 ## 5. 与 token-budget 的关系
 - 恢复后提示是否和原时间线逐字一致，取决于 token-budget 0.6.0 的 E5b。newsnap 不做适配、不 import 它。
 - newsnap 整体回退 `.context/`，全文去重撞键不会发生（总设计 §1c(1)）；E5a 是给单会话回退工具用的。
