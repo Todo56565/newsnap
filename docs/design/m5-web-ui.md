@@ -76,6 +76,23 @@
 
 **建议先做 M5-0 PoC（半天到一天）**：一个最小客户端模块，在会话头部挂一个按钮，经 Remote 读 `list` 显示条数；三条路线各验证一遍，网页和桌面都要看。
 
+## 3a. M5-0 PoC 结果（2026-10-21，分支 poc/m5-remote 4206d1d）
+
+网页端实测**走通**（DSH rc.2，`test/e2e/web/m5poc.mjs`）：
+- **客户端模块**：第三方插件也会被 client-modules 扫描到。只要 package.json 里有 `dsh.client { platform: 'web' }` 和 `./client` 导出，`newsnap/client.js` 就被打进 `/plugins/??…` 组合脚本加载。包格式是 `window.__ModuleLoader__.load({ id, factory(require) })`，外部依赖（如 react）经 require 从平台模块表取。PoC 手写纯 JS，不需要 DSH 的 tsdown 预设。
+- **挂载位置**：`conversation.session.header.utilities` 能挂上按钮（order -6，在计划任务按钮左边），弹出层正常显示。
+- **数据接口**：用的是 Typert Gateway 的 **SRC 回退**，它在发布版里也开着：宿主侧没有严格描述符时，按原型上的方法描述符（`@deepseek-ai/dsh-typert-protocol/remote-methods`，version 1）和可见的 `typertRemote` 绑定找服务，从函数源码读参数名，名为 `session` 的参数自动解析成 Session。newsnap 不用装饰器语法、也不在运行时 import 协议包，按格式写好描述符后用 `ctx.provide('newsnapRemote', obj)` 注册即可。
+- **客户端调用**：`ctx.remote` 拒绝挂载 SRC 描述符，所以直接用 `ctx.connection.rpc.call('/api', 'newsnap/list', { args: { sessionId } })`，走 `POST /api/newsnap/list`，三次调用都返回 200。代价是没有 schema 校验和生成的类型，需要我们自己校验入参。
+- 同一轮还验证了 `delete` 和 `purge` 斜杠命令：预览、确认、救援点删除后 status 显示「不能撤销」，purge 后弹出层显示「还没有快照」，都符合预期。
+
+**风险与未验证**
+- SRC 回退依赖协议的内部格式（描述符属性名、version 1、按参数名匹配 lookup），DSH 升级时可能变化。对策：把 Remote 适配集中在 `host/remote.ts` 一处，启动时自检，失败只关掉界面、不影响命令。
+- 桌面端没测。理论上 Connection 与 carrier 无关，桌面端也经 /api RPC 分发，需要用户本机验证。
+- 写操作（snap、restore）还没接。restore 会让宿主退出，届时客户端需要配合重连后自动刷新。
+- 权限：非 owner 的 Peer（远程访问）会经 remoteAccess 判定，SRC 方法默认的处理方式未查。
+
+**结论**：首选路线可行，不需要后备方案 A 或 B。
+
 ## 4. 分期
 
 - **M5-0** PoC：确认通信路线（见上）。
@@ -88,4 +105,4 @@
 1. 主入口用书签卡（2.1）加头部按钮（2.2）两个都要，还是只要其一？
 2. 恢复确认用全屏面板（2.4），还是更轻的居中对话框？
 3. 对比视图（2.3）放 M5-2 可以吗？它要算 diff，成本最高。
-4. M5-0 PoC 如果证明第三方 Remote 走不通：接受「网页端用 HTTP 路由，桌面端暂只有命令」吗？
+4. ~~第三方 Remote 走不通时的后备~~：PoC 已走通，不再需要。
