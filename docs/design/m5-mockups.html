@@ -85,6 +85,14 @@
   .pair { display:grid; grid-template-columns:1fr 1fr; gap:18px; max-width:1100px; }
   .pair .dsh { height:380px; }
   .cap { font-size:13px; color:#555; margin:6px 0 0; }
+
+  .rail { position:absolute; right:14px; top:70px; width:30px; display:flex; flex-direction:column; align-items:flex-end; gap:8px; }
+  .rail i { display:block; width:12px; height:2px; background:#c4c7cd; border-radius:1px; }
+  .rail i.act { width:18px; background:#555; }
+  .rail .snap { width:22px; height:3px; background:var(--hi); border-radius:2px; box-shadow:0 0 0 3px var(--hi-bg); }
+  .rail .now { width:24px; height:3px; background:#e8a400; border-radius:2px; margin-top:6px; box-shadow:0 0 0 3px #fff4d6; }
+  .tip { position:absolute; background:#fff; border:1px solid var(--line); border-radius:10px; box-shadow:0 8px 24px rgba(0,0,0,.14); padding:10px; font-size:12px; z-index:6; }
+  .callout { position:absolute; font-size:12px; color:#555; max-width:210px; }
   footer { padding:20px 28px 40px; color:var(--mute); font-size:13px; }
 </style>
 </head>
@@ -100,6 +108,7 @@
   <a href="#s4">4 恢复确认（全屏 vs 对话框）</a>
   <a href="#s5">5 恢复后提示条</a>
   <a href="#s6">6 会话列表小标记</a>
+  <a href="#s7" style="border-color:#e8a400;">7 轮次导航条上的快照线（新）</a>
 </nav>
 
 <!-- 1 -->
@@ -273,6 +282,45 @@
     </div>
     <div class="main"><div class="head"></div><div class="chat"><div class="msg ai"></div></div></div>
   </div>
+</section>
+
+<!-- 7 -->
+<section id="s7">
+  <h2>7 轮次导航条上的快照线 <span class="tag">你提的新想法</span></h2>
+  <p class="why">DSH 对话右侧有一条「轮次导航条」，每一轮对话是一条短横线。快照用<b style="color:#2f6bff">蓝线</b>标在拍照那一刻：它在拍照前最后一轮和拍照后第一轮之间。最底下永远有一条<b style="color:#c78a00">琥珀色线</b>，代表「现在」，鼠标移上去就能拍照。点蓝线会弹出 B 确认框。</p>
+  <div class="pair">
+    <div>
+      <div class="dsh" style="grid-template-columns:150px 1fr; height:420px;">
+        <div class="side"><div class="row cur">队长会话</div><div class="row"></div></div>
+        <div class="main">
+          <div class="head"><div class="title"></div></div>
+          <div class="chat" style="padding-right:60px;"><div class="msg user"></div><div class="msg ai tall"></div><div class="msg ai"></div><div class="msg user"></div></div>
+          <div class="input"><div class="box"></div></div>
+        </div>
+        <div class="rail"><i></i><i></i><i></i><i></i><span class="snap" title="快照"></span><i class="act"></i><i></i><span class="now"></span></div>
+        <div class="tip" style="right:54px; top:92px; width:200px;"><b style="color:var(--hi);">◆ 17:19 快照「first」</b><div class="mute">在第 4 轮和第 5 轮之间 · 点击回到这里</div></div>
+      </div>
+      <p class="cap">鼠标移到蓝线上：显示是哪个快照，点击后弹 B 确认框。</p>
+    </div>
+    <div>
+      <div class="dsh" style="grid-template-columns:150px 1fr; height:420px;">
+        <div class="side"><div class="row cur">队长会话</div><div class="row"></div></div>
+        <div class="main">
+          <div class="head"><div class="title"></div></div>
+          <div class="chat" style="padding-right:60px;"><div class="msg user"></div><div class="msg ai tall"></div><div class="msg ai"></div><div class="msg user"></div></div>
+          <div class="input"><div class="box"></div></div>
+        </div>
+        <div class="rail"><i></i><i></i><i></i><i></i><span class="snap"></span><i></i><i class="act"></i><span class="now"></span></div>
+        <div class="tip" style="right:54px; top:150px; width:220px; border-color:#e8a400;">
+          <b>现在</b><div class="mute" style="margin-bottom:6px;">第 6 轮之后 · 团队空闲</div>
+          <div style="display:flex; gap:6px;"><span class="btn" style="flex:1; color:#aaa;">备注（可选）</span><span class="btn pri">📷 拍一张</span></div>
+          <div style="margin-top:6px; text-align:right;"><span class="btn ghost" style="color:var(--hi);">⤢ 打开时光机全窗口</span></div>
+        </div>
+      </div>
+      <p class="cap">鼠标移到琥珀色线上：直接拍照。「全窗口」那个按钮是我对你说的「全窗口的画面」的猜测：它打开第 3 项的对比视图，放大成整页。</p>
+    </div>
+  </div>
+  <p class="cap" style="margin-top:12px;">可行性：这条导航条是 DSH 内部组件，<b>没有给插件留挂载点</b>。要实现只能在页面上叠一层，按它的位置画线（DSH 改样式就可能错位），或者给上游提 issue 要一个挂载点。还要把快照对应到轮次：拍照时记下队长会话的轮号就行。</p>
 </section>
 
 <footer>
