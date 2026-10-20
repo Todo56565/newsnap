@@ -166,6 +166,22 @@ window.__ModuleLoader__.load({
         error && h('p', { style: { margin: '8px 0 0', color: C.error, whiteSpace: 'pre-wrap' } }, error)))
     }
 
+    // 轻量文字按钮：不用实心按钮，避免在细线书签和提示条里显得太重
+    function LinkButton({ children, onClick, tone = 'accent', label, ...rest }) {
+      const [over, setOver] = useState(false)
+      return h('button', {
+        type: 'button', onClick, 'aria-label': label,
+        onMouseEnter: () => setOver(true), onMouseLeave: () => setOver(false),
+        style: {
+          border: 'none', font: 'inherit', fontSize: 12, lineHeight: '20px', padding: '0 8px', borderRadius: 6, cursor: 'pointer',
+          color: tone === 'accent' ? C.accent : C.faint,
+          background: over ? `color-mix(in srgb, ${tone === 'accent' ? C.accent : C.faint} 12%, transparent)` : 'transparent',
+          transition: 'background .12s',
+        },
+        ...rest,
+      }, children)
+    }
+
     // ── 1 对话里的书签卡（/newsnap snap 的命令行渲染器）──
     function GenericRow({ node }) {
       const [open, setOpen] = useState(false)
@@ -200,17 +216,19 @@ window.__ModuleLoader__.load({
         const label = snap
           ? [h('b', { key: 't', style: { color: C.text, fontWeight: 600 } }, when(snap.createdAt)), ` 快照${snap.note ? `「${snap.note}」` : ''} · ${snap.sessions} 个会话`]
           : state.status === 'ready' ? ['快照已删除'] : ['快照']
+        const line = { flex: 1, borderTop: `1px dashed ${C.accent}`, opacity: 0.45 }
         return h('div', {
           'data-newsnap': 'bookmark', 'data-newsnap-snap': snap ? snap.id : '',
-          onMouseEnter: () => setHover(true), onMouseLeave: () => setHover(false), onFocus: () => setHover(true),
-          style: { display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: C.sub, padding: '6px 0', minHeight: 30 },
+          onMouseEnter: () => setHover(true), onMouseLeave: () => setHover(false), onFocus: () => setHover(true), onBlur: () => setHover(false),
+          style: { position: 'relative', display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: C.sub, padding: '6px 0', minHeight: 30 },
         },
-        h('span', { style: { flex: 1, borderTop: `1px dashed ${C.accent}`, opacity: 0.55 } }),
-        h('span', { style: { color: C.accent } }, '◆'),
+        h('span', { style: line }),
+        h('span', { style: { color: C.accent, fontSize: 10 } }, '◆'),
         h('span', { style: { whiteSpace: 'nowrap' } }, ...label),
-        snap && h('span', { style: { display: 'inline-flex', gap: 6, opacity: hover ? 1 : 0, transition: 'opacity .15s', pointerEvents: hover ? 'auto' : 'none' } },
-          h(Button, { variant: 'primary', size: 'sm', onClick: () => setDialog(true), 'data-newsnap': 'restore' }, '回到这里')),
-        h('span', { style: { flex: 1, borderTop: `1px dashed ${C.accent}`, opacity: 0.55 } }),
+        h('span', { style: line }),
+        // 操作浮在右端的虚线上，不占位，书签文字始终居中
+        snap && h('span', { style: { position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', paddingLeft: 8, background: C.base, opacity: hover ? 1 : 0, transition: 'opacity .15s', pointerEvents: hover ? 'auto' : 'none' } },
+          h(LinkButton, { onClick: () => setDialog(true), 'data-newsnap': 'restore' }, '↩ 回到这里')),
         dialog && snap && h(ConfirmDialog, { ctx, call, sessionId, mode: 'restore', snap, onClose: () => setDialog(false) }))
       }
     }
@@ -230,15 +248,17 @@ window.__ModuleLoader__.load({
         const what = last.kind === 'snapshot'
           ? `已回到${last.targetAt ? ` ${when(last.targetAt)} 的` : ''}快照${last.note ? `「${last.note}」` : ` ${last.target}`}`
           : '已撤销上一次恢复'
-        return h('div', {
+        // 贴合文字的居中小条，不拉满整行
+        return h('div', { style: { display: 'flex', justifyContent: 'center', marginBottom: 8 } }, h('div', {
           'data-newsnap': 'banner',
-          style: { display: 'flex', alignItems: 'center', gap: 10, minHeight: 34, padding: '4px 6px 4px 12px', margin: '0 auto 6px', maxWidth: 'min(100%, 752px)', boxSizing: 'border-box', borderRadius: 10, background: `color-mix(in srgb, ${C.accent} 9%, transparent)`, fontSize: 13, color: C.text },
+          style: { display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: 'min(100%, 752px)', boxSizing: 'border-box', padding: '3px 4px 3px 12px', borderRadius: 999, border: `1px solid color-mix(in srgb, ${C.accent} 22%, transparent)`, background: `color-mix(in srgb, ${C.accent} 6%, ${C.base})`, fontSize: 12.5, color: C.text },
         },
         h('span', { style: { color: C.accent } }, '⟲'),
-        h('span', { style: { flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, what),
-        last.canUndo && h(Button, { variant: 'outline', size: 'sm', onClick: () => setDialog(true), 'data-newsnap': 'undo' }, '撤销'),
-        h(Button, { variant: 'ghost', size: 'sm', onClick: close, 'aria-label': '关闭提示' }, '×'),
-        dialog && h(ConfirmDialog, { ctx, call, sessionId, mode: 'undo', onClose: () => setDialog(false) }))
+        h('span', { style: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, what),
+        last.canUndo && h('span', { style: { width: 1, height: 12, background: C.border, marginLeft: 4 } }),
+        last.canUndo && h(LinkButton, { onClick: () => setDialog(true), 'data-newsnap': 'undo' }, '撤销'),
+        h(LinkButton, { tone: 'faint', onClick: close, label: '关闭提示' }, '✕'),
+        dialog && h(ConfirmDialog, { ctx, call, sessionId, mode: 'undo', onClose: () => setDialog(false) })))
       }
     }
 
