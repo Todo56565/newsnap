@@ -44,6 +44,10 @@ window.__ModuleLoader__.load({
 .nsn-text-btn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .nsn-cmd{display:flex;flex-direction:column}
 .nsn-cmd-title{font-weight:400}
+.nsn-cmd[data-quiet] .nsn-cmd-title,.nsn-cmd[data-quiet] .nsn-summary,.nsn-cmd[data-quiet] .nsn-glyph{color:var(--dsw-alias-label-tertiary)}
+.nsn-cmd[data-quiet]{opacity:.85}
+.nsn-folded{display:none}
+
 .nsn-sep{flex:none;width:2px;height:2px;margin:0 8px;border-radius:1px;background:var(--dsw-alias-label-caption)}
 .nsn-summary{min-width:0;overflow:hidden;flex:1 1 auto;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));text-overflow:ellipsis;white-space:nowrap}
 .nsn-summary[data-error],.nsn-body[data-error]{color:var(--dsw-alias-state-error-primary)}
@@ -209,29 +213,133 @@ window.__ModuleLoader__.load({
         error && h('p', { style: { margin: '8px 0 0', color: C.error, whiteSpace: 'pre-wrap' } }, error)))
     }
 
-    // 其他子命令：照 DSH 的 GenericCommandCard 画（DisclosureRow + 摘要，多行输出可展开）
-    function GenericRow({ node }) {
-      const [open, setOpen] = useState(false)
+    // 其他子命令：照 DSH 的 GenericCommandCard 画（DisclosureRow + 摘要），并做三件事让它们不抢眼：
+    // 1) 摘要只留一句短话，点开看全文；2) 只查看的命令（status/list/preview/help）再淡一档、不显示摘要；
+    // 3) 相邻的几条折叠成一行「newsnap · N 条操作」。
+    const QUIET = new Set(['status', 'list', 'preview', 'help'])
+    function shortSummary(text) {
+      let t = text.replace(/^\s*newsnap\s*[:：]\s*/, '')
+      const cut = t.search(/[。\n（(；;，,]/)
+      if (cut > 0) t = t.slice(0, cut)
+      t = t.trim()
+      return t.length > 28 ? `${t.slice(0, 27)}…` : t
+    }
+    function rowInfo(node) {
       const text = node.outcome ? node.outcome.text : undefined
       const state = node.outcome === null ? 'running' : node.outcome.kind === 'error' ? 'error' : 'ok'
-      const summary = node.outcome === null ? '执行中…' : (text || (state === 'error' ? '失败' : '完成'))
-      const body = text !== undefined && text.includes('\n') ? text : null
       const sub = (node.args || '').trim().split(/\s+/)[0]
-      return h('div', { className: 'nsn-cmd', 'data-newsnap': 'command', 'data-state': state },
-        h(DisclosureRow, {
-          titleClassName: 'nsn-cmd-title',
-          icon: icon('IconClockOutlineRegular'),
-          title: sub ? `newsnap ${sub}` : 'newsnap',
-          running: state === 'running',
-          open: open && body !== null,
-          expandable: body !== null,
-          expandOnRowClick: true,
-          keepContentWhenOpen: true,
-          onToggle: () => setOpen((v) => !v),
-          collapsedContent: h(React.Fragment, null,
-            h('span', { className: 'nsn-sep', 'data-shimmer-decoration': true, 'aria-hidden': true }),
-            h('span', { className: 'nsn-summary', 'data-error': state === 'error' || undefined }, h(TextShimmer, null, body ? summary.split('\n')[0] : summary))),
-        }, open && body !== null ? h('pre', { className: 'nsn-body', 'data-error': state === 'error' || undefined }, body) : undefined))
+      const summary = node.outcome === null ? '执行中…' : text ? shortSummary(text) : (state === 'error' ? '失败' : '完成')
+      const full = text !== undefined && text.trim() !== '' && text.trim() !== summary ? text : null
+      return { text, state, sub, summary, full, quiet: QUIET.has(sub) && state !== 'error' }
+    }
+
+    // 折叠协调：按 DOM 顺序找出相邻的 newsnap 命令行，组头记组员数，组员在折叠时只留一个空标记（保持相邻关系可测）
+    const folds = (() => {
+      let roles = new Map() // cid -> { head: cid, count }
+      const open = new Set()
+      const listeners = new Set()
+      let scheduled = false
+      let observer = null
+      const emit = () => { for (const l of listeners) l() }
+      function adjacent(prevEl, el) {
+        let a = el
+        for (let i = 0; i < 10 && a && a.parentElement; i++) {
+          const prev = a.previousElementSibling
+          if (prev) {
+            const rows = prev.matches('[data-newsnap-row]') ? [prev] : Array.from(prev.querySelectorAll('[data-newsnap-row]'))
+            if (rows[rows.length - 1] !== prevEl) return false
+            // 前一块里除了 newsnap 的行/组头之外不能有别的内容
+            let rest = prev.textContent
+            for (const n of prev.querySelectorAll('[data-newsnap="group"],[data-newsnap-row]')) rest = rest.replace(n.textContent, '')
+            return rest.trim() === ''
+          }
+          a = a.parentElement
+        }
+        return false
+      }
+      function compute() {
+        scheduled = false
+        const els = Array.from(document.querySelectorAll('[data-newsnap-row]'))
+        const next = new Map()
+        let head = null; let members = []
+        const flush = () => { if (head) for (const m of members) next.set(m, { head, count: members.length }) }
+        els.forEach((el, i) => {
+          const cid = el.getAttribute('data-newsnap-row')
+          if (i > 0 && head && adjacent(els[i - 1], el)) members.push(cid)
+          else { flush(); head = cid; members = [cid] }
+        })
+        flush()
+        let changed = next.size !== roles.size
+        if (!changed) for (const [k, v] of next) { const o = roles.get(k); if (!o || o.head !== v.head || o.count !== v.count) { changed = true; break } }
+        if (changed) { roles = next; emit() }
+      }
+      function schedule() { if (!scheduled) { scheduled = true; requestAnimationFrame(compute) } }
+      return {
+        subscribe(l) {
+          listeners.add(l)
+          if (!observer) { observer = new MutationObserver(schedule); observer.observe(document.body, { childList: true, subtree: true }) }
+          schedule()
+          return () => listeners.delete(l)
+        },
+        role: (cid) => roles.get(cid),
+        isOpen: (head) => open.has(head),
+        toggle(head) { open.has(head) ? open.delete(head) : open.add(head); emit() },
+        version: () => roles,
+        openVersion: () => open.size,
+        schedule,
+      }
+    })()
+    function useFold(cid) {
+      useSyncExternalStore(folds.subscribe, folds.version)
+      const openN = useSyncExternalStore(folds.subscribe, folds.openVersion)
+      useEffect(() => { folds.schedule() }, [])
+      const r = folds.role(cid)
+      if (!r || r.count < 2) return { kind: 'single' }
+      return { kind: r.head === cid ? 'head' : 'member', head: r.head, count: r.count, open: folds.isOpen(r.head), openN }
+    }
+
+    function CommandRow({ node }) {
+      const [open, setOpen] = useState(false)
+      const { state, sub, summary, full, quiet } = rowInfo(node)
+      return h(DisclosureRow, {
+        titleClassName: 'nsn-cmd-title',
+        icon: icon('IconClockOutlineRegular'),
+        title: sub ? `newsnap ${sub}` : 'newsnap',
+        running: state === 'running',
+        open: open && full !== null,
+        expandable: full !== null,
+        expandOnRowClick: true,
+        keepContentWhenOpen: true,
+        onToggle: () => setOpen((v) => !v),
+        collapsedContent: quiet && state !== 'running' ? undefined : h(React.Fragment, null,
+          h('span', { className: 'nsn-sep', 'data-shimmer-decoration': true, 'aria-hidden': true }),
+          h('span', { className: 'nsn-summary', 'data-error': state === 'error' || undefined }, h(TextShimmer, null, summary))),
+      }, open && full !== null ? h('pre', { className: 'nsn-body', 'data-error': state === 'error' || undefined }, full) : undefined)
+    }
+
+    function GenericRow({ node }) {
+      const cid = node.commandId || `${node.name}:${node.args}`
+      const fold = useFold(cid)
+      const info = rowInfo(node)
+      const attrs = { 'data-newsnap': 'command', 'data-newsnap-row': cid, 'data-state': info.state }
+      if (fold.kind === 'member' && !fold.open) return h('div', { ...attrs, className: 'nsn-folded', 'data-folded': true })
+      const row = h('div', { className: 'nsn-cmd', ...attrs, 'data-quiet': info.quiet || undefined }, h(CommandRow, { node }))
+      if (fold.kind !== 'head') return row
+      return h(React.Fragment, null,
+        h('div', { className: 'nsn-cmd', 'data-newsnap': 'group', 'data-quiet': true },
+          h(DisclosureRow, {
+            titleClassName: 'nsn-cmd-title',
+            icon: icon('IconClockOutlineRegular'),
+            title: 'newsnap',
+            open: fold.open,
+            expandable: true,
+            expandOnRowClick: true,
+            onToggle: () => folds.toggle(fold.head),
+            collapsedContent: h(React.Fragment, null,
+              h('span', { className: 'nsn-sep', 'aria-hidden': true }),
+              h('span', { className: 'nsn-summary' }, `${fold.count} 条操作`)),
+          })),
+        fold.open ? h('div', { className: 'nsn-group-item' }, row) : h('div', { ...attrs, className: 'nsn-folded', 'data-folded': true }))
     }
 
     function makeBookmark(ctx, store, call) {
