@@ -8,7 +8,9 @@ window.__ModuleLoader__.load({
     const module = { exports: {} }
     const React = require('react')
     const { createPortal } = require('react-dom')
-    const { Button, Modal } = require('@deepseek-ai/dsh-client-ui-primitives')
+    const P = require('@deepseek-ai/dsh-client-ui-primitives')
+    const { Button, Modal, Tooltip, DisclosureRow, TextShimmer } = P
+    const icon = (name, size = 14) => (P[name] ? h(P[name], { size }) : null)
     const h = React.createElement
     const { useState, useEffect, useCallback, useSyncExternalStore } = React
 
@@ -24,6 +26,48 @@ window.__ModuleLoader__.load({
       border: 'var(--dsw-alias-border-l2, rgba(127,127,127,.25))',
       layer: 'var(--dsw-alias-bg-layer-1, rgba(127,127,127,.06))',
       base: 'var(--dsw-alias-bg-base, #fff)',
+    }
+
+    // 原生感：类名与数值照抄 DSH 自己的 GoalBar（输入框上方条）和 GenericCommandCard（命令行），全部用设计令牌。
+    const STYLE = `
+.nsn-dock{box-sizing:border-box;width:calc(100% - 2*var(--dsh-composer-side-clearance,0px) - 4*var(--dsh-composer-dock-inset,0px));margin:0 auto}
+.nsn-bar{position:relative;isolation:isolate;box-sizing:border-box;display:flex;align-items:center;gap:10px;width:100%;max-width:calc(var(--dsh-composer-card-max-width,760px) - 4*var(--dsh-composer-dock-inset,0px));height:36px;margin:0 auto;padding:4px 5px 4px 12px;--dsw-elevation-stroke-color:var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-md);box-shadow:var(--dsw-elevation-panel)}
+.nsn-bar::before{position:absolute;z-index:-1;inset:0;border-radius:inherit;background:var(--dsw-specific-menu);backdrop-filter:var(--dsw-menu-backdrop-filter);content:'';pointer-events:none}
+.nsn-glyph{display:inline-flex;flex:none;color:var(--dsw-alias-label-tertiary)}
+.nsn-label{flex:none;font-size:13px;line-height:24px;font-weight:500;color:var(--dsw-alias-label-primary)}
+.nsn-objective{flex:1;min-width:0;overflow:hidden;font-size:13px;line-height:20px;color:var(--dsw-alias-label-primary-dimmed);text-overflow:ellipsis;white-space:nowrap}
+.nsn-actions{display:flex;align-items:center;gap:6px;flex:none}
+.nsn-icon-btn{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;padding:0;border:none;border-radius:999px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer}
+.nsn-icon-btn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-secondary)}
+.nsn-icon-btn:disabled{opacity:.4;cursor:default}
+.nsn-text-btn{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px;border:none;border-radius:999px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;cursor:pointer}
+.nsn-text-btn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.nsn-cmd{display:flex;flex-direction:column}
+.nsn-cmd-title{font-weight:400}
+.nsn-sep{flex:none;width:2px;height:2px;margin:0 8px;border-radius:1px;background:var(--dsw-alias-label-caption)}
+.nsn-summary{min-width:0;overflow:hidden;flex:1 1 auto;font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px));text-overflow:ellipsis;white-space:nowrap}
+.nsn-summary[data-error],.nsn-body[data-error]{color:var(--dsw-alias-state-error-primary)}
+.nsn-body{max-height:260px;margin:4px 0 4px 4px;padding:12px 16px;overflow:auto;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-lg);background:var(--dsw-alias-markdown-code-block);color:var(--dsw-alias-label-primary);font:var(--dsw-font-markdown-code-block-small);white-space:pre-wrap}
+.nsn-mark{position:relative;display:flex;align-items:center;gap:8px;min-height:32px;color:var(--dsw-alias-label-secondary);font-size:var(--dsh-content-font-size-secondary,13px);line-height:calc(24px + var(--dsh-content-font-delta,0px))}
+.nsn-mark-line{flex:1;height:0;border-top:1px dashed var(--dsw-alias-border-l3)}
+.nsn-mark-time{color:var(--dsw-alias-label-primary);font-weight:500}
+.nsn-mark-meta{color:var(--dsw-alias-label-tertiary)}
+.nsn-mark-action{position:absolute;right:0;top:50%;transform:translateY(-50%);padding-left:6px;background:var(--dsw-alias-bg-base);opacity:0;pointer-events:none;transition:opacity .15s}
+.nsn-mark:hover .nsn-mark-action,.nsn-mark:focus-within .nsn-mark-action{opacity:1;pointer-events:auto}
+.nsn-note{margin:0 0 8px;line-height:1.65;color:var(--dsw-alias-label-primary)}
+.nsn-note-dim{color:var(--dsw-alias-label-secondary)}
+.nsn-details{margin-top:8px;padding:8px 12px;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-layer-1);font-size:12px;line-height:1.8;color:var(--dsw-alias-label-secondary)}
+@keyframes nsn-spin{to{transform:rotate(360deg)}}
+.nsn-spin{display:inline-flex;animation:nsn-spin 1s linear infinite;color:var(--dsw-alias-label-tertiary)}
+`
+    function ensureStyle() {
+      if (typeof document === 'undefined' || document.getElementById('newsnap-style')) return
+      const el = document.createElement('style'); el.id = 'newsnap-style'; el.textContent = STYLE; document.head.appendChild(el)
+    }
+
+    function IconAction({ label, iconName, onClick, disabled, ...rest }) {
+      return h(Tooltip, { portal: true, label, side: 'top', delayMs: 400 },
+        h('button', { type: 'button', className: 'nsn-icon-btn', 'aria-label': label, onClick, disabled, ...rest }, icon(iconName)))
     }
 
     const pad = (n) => String(n).padStart(2, '0')
@@ -101,9 +145,8 @@ window.__ModuleLoader__.load({
         'data-newsnap': 'transition',
         style: { position: 'fixed', inset: 0, zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'color-mix(in srgb, var(--dsw-alias-bg-base, #fff) 92%, transparent)', backdropFilter: 'blur(2px)' },
       }, h('div', { style: { textAlign: 'center', color: C.text, maxWidth: 420, padding: 24 } },
-        h('div', { style: { fontSize: 30, color: C.accent, display: 'inline-block', animation: 'newsnap-spin 1.4s linear infinite' } }, '⟲'),
-        h('style', null, '@keyframes newsnap-spin{to{transform:rotate(-360deg)}}'),
-        h('div', { style: { fontSize: 16, fontWeight: 600, marginTop: 8 } }, title),
+        h('span', { className: 'nsn-spin' }, icon('IconLoadingOutlineRegular', 24)),
+        h('div', { style: { fontSize: 15, fontWeight: 500, marginTop: 10 } }, title),
         h('div', { style: { fontSize: 13, color: C.sub, marginTop: 8, lineHeight: 1.6 } }, relaunches
           ? 'DSH 正在退出、恢复文件和会话、再重新启动。完成后页面会自动刷新，通常十几秒。'
           : 'DSH 会关闭，弹出「启动失败」对话框后点「重启」即可，这是 newsnap 让宿主退出造成的。'))), document.body)
@@ -142,12 +185,12 @@ window.__ModuleLoader__.load({
       if (going !== null) return h(Transition, { title: mode === 'restore' ? `正在回到 ${when(snap.createdAt)}…` : '正在撤销…', relaunches: going.relaunches })
       const body = mode === 'restore'
         ? [
-            h('p', { key: 'p', style: { margin: '0 0 8px', lineHeight: 1.65 } },
+            h('p', { key: 'p', className: 'nsn-note' },
               '这次快照之后的对话、团队状态和工作区文件改动都会撤回，恢复前会先自动存一个撤销点。',
-              h('span', { style: { color: C.sub } }, '被 .gitignore 忽略的生成物（如 dist、node_modules）不回退。')),
+              h('span', { className: 'nsn-note-dim' }, '被 .gitignore 忽略的生成物（如 dist、node_modules）不回退。')),
             preview && preview.otherTeams.length > 0 && h('p', { key: 'w', style: { margin: '0 0 8px', color: C.warn } }, `同一工作区还有团队 ${preview.otherTeams.join('、')}，工作区文件回退也会影响它们。`),
-            h('button', { key: 'd', type: 'button', onClick: () => setDetails(!details), style: { border: 'none', background: 'none', padding: 0, color: C.sub, cursor: 'pointer', font: 'inherit', fontSize: 12 } }, `${details ? '▾' : '▸'} 查看详情`),
-            details && h('div', { key: 'dd', style: { marginTop: 6, padding: '8px 10px', borderRadius: 8, background: C.layer, fontSize: 12, color: C.sub, lineHeight: 1.7 } },
+            h('button', { key: 'd', type: 'button', className: 'nsn-text-btn', style: { marginLeft: -8 }, onClick: () => setDetails(!details), 'aria-expanded': details }, icon(details ? 'IconChevronDownOutlineRegular' : 'IconChevronRightOutlineRegular', 12), '查看详情'),
+            details && h('div', { key: 'dd', className: 'nsn-details' },
               preview === null && error === null ? '正在读取…' : preview && [
                 h('div', { key: 1 }, `快照 ${preview.id} · 团队 ${preview.team}`),
                 h('div', { key: 2 }, preview.removedSessions > 0 ? `快照之后新开的 ${preview.removedSessions} 个会话会移进撤销点` : '没有快照之后新开的会话'),
@@ -166,36 +209,29 @@ window.__ModuleLoader__.load({
         error && h('p', { style: { margin: '8px 0 0', color: C.error, whiteSpace: 'pre-wrap' } }, error)))
     }
 
-    // 轻量文字按钮：不用实心按钮，避免在细线书签和提示条里显得太重
-    function LinkButton({ children, onClick, tone = 'accent', label, ...rest }) {
-      const [over, setOver] = useState(false)
-      return h('button', {
-        type: 'button', onClick, 'aria-label': label,
-        onMouseEnter: () => setOver(true), onMouseLeave: () => setOver(false),
-        style: {
-          border: 'none', font: 'inherit', fontSize: 12, lineHeight: '20px', padding: '0 8px', borderRadius: 6, cursor: 'pointer',
-          color: tone === 'accent' ? C.accent : C.faint,
-          background: over ? `color-mix(in srgb, ${tone === 'accent' ? C.accent : C.faint} 12%, transparent)` : 'transparent',
-          transition: 'background .12s',
-        },
-        ...rest,
-      }, children)
-    }
-
-    // ── 1 对话里的书签卡（/newsnap snap 的命令行渲染器）──
+    // 其他子命令：照 DSH 的 GenericCommandCard 画（DisclosureRow + 摘要，多行输出可展开）
     function GenericRow({ node }) {
       const [open, setOpen] = useState(false)
-      const text = node.outcome && node.outcome.text || (node.outcome === null ? '执行中…' : '')
-      const first = text.split('\n')[0]
-      const multi = text.includes('\n')
-      const isError = node.outcome && node.outcome.kind === 'error'
-      return h('div', { 'data-newsnap': 'command', style: { fontSize: 13, color: C.sub } },
-        h('div', { onClick: () => multi && setOpen(!open), style: { display: 'flex', gap: 8, alignItems: 'baseline', cursor: multi ? 'pointer' : 'default' } },
-          h('span', { style: { color: C.faint } }, '⟲'),
-          h('span', { style: { color: C.text } }, `newsnap${node.args ? ` ${node.args.trim().split(/\s+/)[0]}` : ''}`),
-          h('span', { style: { color: isError ? C.error : C.sub, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0, flex: 1 } }, first),
-          multi && h('span', { style: { color: C.faint } }, open ? '▾' : '▸')),
-        open && h('pre', { style: { margin: '6px 0 0 20px', whiteSpace: 'pre-wrap', fontSize: 12, color: isError ? C.error : C.sub, fontFamily: 'inherit' } }, text))
+      const text = node.outcome ? node.outcome.text : undefined
+      const state = node.outcome === null ? 'running' : node.outcome.kind === 'error' ? 'error' : 'ok'
+      const summary = node.outcome === null ? '执行中…' : (text || (state === 'error' ? '失败' : '完成'))
+      const body = text !== undefined && text.includes('\n') ? text : null
+      const sub = (node.args || '').trim().split(/\s+/)[0]
+      return h('div', { className: 'nsn-cmd', 'data-newsnap': 'command', 'data-state': state },
+        h(DisclosureRow, {
+          titleClassName: 'nsn-cmd-title',
+          icon: icon('IconClockOutlineRegular'),
+          title: sub ? `newsnap ${sub}` : 'newsnap',
+          running: state === 'running',
+          open: open && body !== null,
+          expandable: body !== null,
+          expandOnRowClick: true,
+          keepContentWhenOpen: true,
+          onToggle: () => setOpen((v) => !v),
+          collapsedContent: h(React.Fragment, null,
+            h('span', { className: 'nsn-sep', 'data-shimmer-decoration': true, 'aria-hidden': true }),
+            h('span', { className: 'nsn-summary', 'data-error': state === 'error' || undefined }, h(TextShimmer, null, body ? summary.split('\n')[0] : summary))),
+        }, open && body !== null ? h('pre', { className: 'nsn-body', 'data-error': state === 'error' || undefined }, body) : undefined))
     }
 
     function makeBookmark(ctx, store, call) {
@@ -205,7 +241,6 @@ window.__ModuleLoader__.load({
         const sub = (node.args || '').trim().split(/\s+/)[0]
         const isSnap = sub === 'snap' && node.outcome !== null && node.outcome.kind === 'success'
         const state = useView(store, sessionId)
-        const [hover, setHover] = useState(false)
         const [dialog, setDialog] = useState(false)
         const snap = state.status === 'ready' ? state.view.snapshots.find((s) => s.commandId === node.commandId) : undefined
         useEffect(() => {
@@ -213,22 +248,20 @@ window.__ModuleLoader__.load({
           if (isSnap && state.status === 'ready' && snap === undefined) void store.refresh(sessionId)
         }, [isSnap, node.commandId])
         if (!isSnap) return h(GenericRow, { node })
-        const label = snap
-          ? [h('b', { key: 't', style: { color: C.text, fontWeight: 600 } }, when(snap.createdAt)), ` 快照${snap.note ? `「${snap.note}」` : ''} · ${snap.sessions} 个会话`]
-          : state.status === 'ready' ? ['快照已删除'] : ['快照']
-        const line = { flex: 1, borderTop: `1px dashed ${C.accent}`, opacity: 0.45 }
-        return h('div', {
-          'data-newsnap': 'bookmark', 'data-newsnap-snap': snap ? snap.id : '',
-          onMouseEnter: () => setHover(true), onMouseLeave: () => setHover(false), onFocus: () => setHover(true), onBlur: () => setHover(false),
-          style: { position: 'relative', display: 'flex', alignItems: 'center', gap: 10, fontSize: 12, color: C.sub, padding: '6px 0', minHeight: 30 },
-        },
-        h('span', { style: line }),
-        h('span', { style: { color: C.accent, fontSize: 10 } }, '◆'),
-        h('span', { style: { whiteSpace: 'nowrap' } }, ...label),
-        h('span', { style: line }),
-        // 操作浮在右端的虚线上，不占位，书签文字始终居中
-        snap && h('span', { style: { position: 'absolute', right: 0, top: '50%', transform: 'translateY(-50%)', paddingLeft: 8, background: C.base, opacity: hover ? 1 : 0, transition: 'opacity .15s', pointerEvents: hover ? 'auto' : 'none' } },
-          h(LinkButton, { onClick: () => setDialog(true), 'data-newsnap': 'restore' }, '↩ 回到这里')),
+        return h('div', { className: 'nsn-mark', 'data-newsnap': 'bookmark', 'data-newsnap-snap': snap ? snap.id : '' },
+          h('span', { className: 'nsn-mark-line' }),
+          h('span', { className: 'nsn-glyph' }, icon('IconClockOutlineRegular')),
+          snap
+            ? h(React.Fragment, null,
+                h('span', { className: 'nsn-mark-time' }, when(snap.createdAt)),
+                h('span', null, snap.note ? `快照「${snap.note}」` : '快照'),
+                h('span', { className: 'nsn-sep', style: { margin: 0 } }),
+                h('span', { className: 'nsn-mark-meta' }, `${snap.sessions} 个会话`))
+            : h('span', { className: 'nsn-mark-meta' }, state.status === 'ready' ? '快照已删除' : '快照'),
+          h('span', { className: 'nsn-mark-line' }),
+          // 操作浮在右端虚线上，不占位，书签内容始终居中；悬停或键盘聚焦时出现
+          snap && h('span', { className: 'nsn-mark-action' },
+            h('button', { type: 'button', className: 'nsn-text-btn', onClick: () => setDialog(true), 'data-newsnap': 'restore' }, icon('IconRefreshOutlineRegular', 12), '回到这里')),
         dialog && snap && h(ConfirmDialog, { ctx, call, sessionId, mode: 'restore', snap, onClose: () => setDialog(false) }))
       }
     }
@@ -245,19 +278,18 @@ window.__ModuleLoader__.load({
         const key = `${state.view.team && state.view.team.id}:${last.at}`
         if (dismissed === key) return null
         const close = () => { try { localStorage.setItem(DISMISS_KEY, key) } catch {} ; setDismissed(key) }
-        const what = last.kind === 'snapshot'
-          ? `已回到${last.targetAt ? ` ${when(last.targetAt)} 的` : ''}快照${last.note ? `「${last.note}」` : ` ${last.target}`}`
-          : '已撤销上一次恢复'
-        // 贴合文字的居中小条，不拉满整行
-        return h('div', { style: { display: 'flex', justifyContent: 'center', marginBottom: 8 } }, h('div', {
-          'data-newsnap': 'banner',
-          style: { display: 'inline-flex', alignItems: 'center', gap: 6, maxWidth: 'min(100%, 752px)', boxSizing: 'border-box', padding: '3px 4px 3px 12px', borderRadius: 999, border: `1px solid color-mix(in srgb, ${C.accent} 22%, transparent)`, background: `color-mix(in srgb, ${C.accent} 6%, ${C.base})`, fontSize: 12.5, color: C.text },
-        },
-        h('span', { style: { color: C.accent } }, '⟲'),
-        h('span', { style: { minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } }, what),
-        last.canUndo && h('span', { style: { width: 1, height: 12, background: C.border, marginLeft: 4 } }),
-        last.canUndo && h(LinkButton, { onClick: () => setDialog(true), 'data-newsnap': 'undo' }, '撤销'),
-        h(LinkButton, { tone: 'faint', onClick: close, label: '关闭提示' }, '✕'),
+        const label = last.kind === 'snapshot' ? '已恢复' : '已撤销恢复'
+        const objective = last.kind === 'snapshot'
+          ? `回到${last.targetAt ? ` ${when(last.targetAt)} 的` : ''}快照${last.note ? `「${last.note}」` : ` ${last.target}`}`
+          : '回到了上一次恢复之前的状态'
+        // 与 DSH 的目标条（GoalBar）同一族：同尺寸的浮层条、图标、标题 + 灰色说明、右侧圆形图标按钮
+        return h('div', { className: 'nsn-dock' }, h('div', { className: 'nsn-bar', 'data-newsnap': 'banner' },
+          h('span', { className: 'nsn-glyph' }, icon('IconClockOutlineRegular')),
+          h('span', { className: 'nsn-label' }, label),
+          h('span', { className: 'nsn-objective' }, objective),
+          h('div', { className: 'nsn-actions' },
+            last.canUndo && h(IconAction, { label: last.kind === 'snapshot' ? '撤销这次恢复' : '再撤销一次', iconName: 'IconRefreshOutlineRegular', onClick: () => setDialog(true), 'data-newsnap': 'undo' }),
+            h(IconAction, { label: '关闭提示', iconName: 'IconCloseOutlineRegular', onClick: close, 'data-newsnap': 'close' })),
         dialog && h(ConfirmDialog, { ctx, call, sessionId, mode: 'undo', onClose: () => setDialog(false) })))
       }
     }
@@ -265,6 +297,7 @@ window.__ModuleLoader__.load({
     function apply(ctx) {
       const call = (method, args) => ctx.connection.rpc.call('/api', `newsnap/${method}`, { args })
       const store = createStore(call)
+      ensureStyle()
       ctx.slots.inject('conversation.chat.commandview', () => ctx.slots.register({
         name: 'conversation.chat.commandview',
         key: 'newsnap',
