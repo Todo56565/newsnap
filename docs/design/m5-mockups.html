@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>newsnap M5 界面示意（线框）</title>
+<style>
+  :root { --line:#c9ccd3; --ghost:#eef0f3; --hi:#2f6bff; --hi-bg:#eaf0ff; --warn:#d9480f; --text:#222; --mute:#888; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.5 -apple-system,"PingFang SC","Microsoft YaHei",sans-serif; color:var(--text); background:#f7f7f9; }
+  header.top { padding:18px 28px 6px; }
+  header.top h1 { margin:0 0 4px; font-size:20px; }
+  header.top p { margin:0; color:var(--mute); }
+  nav { display:flex; flex-wrap:wrap; gap:8px; padding:12px 28px; position:sticky; top:0; background:#f7f7f9; z-index:20; border-bottom:1px solid var(--line); }
+  nav a { padding:5px 12px; border:1px solid var(--line); border-radius:16px; text-decoration:none; color:var(--text); background:#fff; font-size:13px; }
+  nav a:hover { border-color:var(--hi); color:var(--hi); }
+  section { padding:24px 28px 36px; border-bottom:1px dashed var(--line); }
+  section h2 { margin:0 0 4px; font-size:17px; }
+  section .why { margin:0 0 14px; color:#555; max-width:900px; }
+  .tag { display:inline-block; font-size:12px; padding:1px 8px; border-radius:10px; background:var(--hi-bg); color:var(--hi); margin-left:6px; vertical-align:2px; }
+  .tag.m2 { background:#fff3e6; color:#b35c00; }
+
+  /* DSH 线框 */
+  .dsh { position:relative; display:grid; grid-template-columns:200px 1fr; height:460px; max-width:1100px; background:#fff; border:1px solid var(--line); border-radius:10px; overflow:hidden; }
+  .dsh.with-right { grid-template-columns:200px 1fr 330px; }
+  .side { border-right:1px solid var(--line); padding:12px 10px; background:#fafbfc; }
+  .side .row { height:28px; border-radius:6px; background:var(--ghost); margin-bottom:8px; display:flex; align-items:center; padding:0 8px; font-size:12px; color:var(--mute); gap:6px; }
+  .side .row.cur { background:#e3e6ea; color:#444; }
+  .main { display:flex; flex-direction:column; min-width:0; }
+  .head { height:44px; border-bottom:1px solid var(--line); display:flex; align-items:center; padding:0 14px; gap:10px; }
+  .head .title { width:180px; height:14px; background:var(--ghost); border-radius:4px; }
+  .head .sp { flex:1; }
+  .head .ico { width:24px; height:24px; border-radius:6px; background:var(--ghost); }
+  .chat { flex:1; padding:16px 22px; overflow:hidden; display:flex; flex-direction:column; gap:12px; }
+  .msg { height:40px; border-radius:8px; background:var(--ghost); }
+  .msg.user { width:45%; align-self:flex-end; height:32px; }
+  .msg.ai { width:80%; }
+  .msg.ai.tall { height:64px; }
+  .input { margin:0 22px 16px; }
+  .input .box { height:62px; border:1px solid var(--line); border-radius:10px; }
+  .right { border-left:1px solid var(--line); display:flex; flex-direction:column; }
+  .right .tabs { height:44px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:8px; padding:0 10px; }
+  .right .tabs span { height:24px; padding:0 10px; border-radius:6px; background:var(--ghost); font-size:12px; display:flex; align-items:center; color:var(--mute); }
+  .right .tabs span.on { background:var(--hi-bg); color:var(--hi); outline:1.5px solid var(--hi); }
+  .label { position:absolute; font-size:12px; color:var(--hi); background:#fff; border:1px solid var(--hi); border-radius:4px; padding:0 6px; }
+
+  /* newsnap 元素（蓝色描边 = 新增） */
+  .hi { outline:2px solid var(--hi); outline-offset:2px; }
+  .btn { display:inline-flex; align-items:center; gap:4px; padding:3px 10px; border-radius:6px; border:1px solid var(--line); background:#fff; font-size:12px; cursor:default; white-space:nowrap; }
+  .btn.pri { background:var(--hi); color:#fff; border-color:var(--hi); }
+  .btn.ghost { border-color:transparent; background:transparent; }
+  .mute { color:var(--mute); }
+
+  .bookmark { display:flex; align-items:center; gap:10px; font-size:12px; color:#555; }
+  .bookmark::before, .bookmark::after { content:""; flex:1; border-top:1px dashed var(--hi); }
+  .bookmark .dia { color:var(--hi); }
+
+  .pop { position:absolute; width:300px; background:#fff; border:1px solid var(--line); border-radius:10px; box-shadow:0 8px 28px rgba(0,0,0,.14); padding:12px; z-index:5; font-size:13px; }
+  .tl { position:relative; margin:10px 0 0 6px; padding-left:16px; border-left:2px solid var(--line); }
+  .tl .node { position:relative; padding:4px 0 10px; }
+  .tl .node::before { content:""; position:absolute; left:-23px; top:9px; width:10px; height:10px; border-radius:50%; background:var(--hi); }
+  .tl .node.rescue::before { background:#fff; border:2px solid var(--hi); width:8px; height:8px; }
+  .tl .sub { font-size:12px; color:var(--mute); }
+
+  .overlay { position:absolute; inset:0; background:rgba(30,32,40,.45); display:flex; align-items:center; justify-content:center; z-index:8; }
+  .sheet { width:min(640px, 94%); background:#fff; border-radius:14px; padding:22px; }
+  .sheet h3 { margin:0 0 4px; font-size:18px; }
+  .cards { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin:14px 0; }
+  .card { border:1px solid var(--line); border-radius:10px; padding:10px; font-size:12px; }
+  .card b { display:block; font-size:13px; margin-bottom:4px; }
+  .card.warn b { color:var(--warn); }
+  .dialog { width:380px; background:#fff; border-radius:12px; padding:18px; }
+  .steps { display:flex; gap:6px; margin-top:16px; font-size:12px; }
+  .steps span { flex:1; text-align:center; padding:6px 0; border-radius:6px; background:var(--ghost); color:var(--mute); }
+  .steps span.done { background:var(--hi-bg); color:var(--hi); }
+  .steps span.now { background:var(--hi); color:#fff; }
+
+  .dock { display:flex; align-items:center; gap:10px; height:32px; padding:0 12px; margin-bottom:8px; border-radius:8px; background:var(--hi-bg); font-size:12px; }
+  .dock .sp { flex:1; }
+
+  .diffrow { display:flex; gap:8px; font-size:12px; padding:3px 0; border-bottom:1px solid #f0f0f0; }
+  .diffrow .k { width:16px; font-weight:600; }
+  .add { color:#2b8a3e; } .del { color:var(--warn); } .mod { color:#b35c00; }
+
+  .dot { color:var(--hi); font-size:11px; }
+  .pair { display:grid; grid-template-columns:1fr 1fr; gap:18px; max-width:1100px; }
+  .pair .dsh { height:380px; }
+  .cap { font-size:13px; color:#555; margin:6px 0 0; }
+  footer { padding:20px 28px 40px; color:var(--mute); font-size:13px; }
+</style>
+</head>
+<body>
+<header class="top">
+  <h1>newsnap 网页界面示意（线框）</h1>
+  <p>灰色方框是 DSH 原有界面，<b style="color:#2f6bff">蓝色</b>是 newsnap 新加的东西。1–6 对应设计草案 2.1–2.6，可以任意组合。</p>
+</header>
+<nav>
+  <a href="#s1">1 对话里的书签</a>
+  <a href="#s2">2 头部时光机按钮</a>
+  <a href="#s3">3 右侧栏对比视图</a>
+  <a href="#s4">4 恢复确认（全屏 vs 对话框）</a>
+  <a href="#s5">5 恢复后提示条</a>
+  <a href="#s6">6 会话列表小标记</a>
+</nav>
+
+<!-- 1 -->
+<section id="s1">
+  <h2>1 对话里的书签卡 <span class="tag">M5-1</span></h2>
+  <p class="why">每拍一次照，对话流在那一刻插一条细分隔线。平时不显眼，鼠标移上去才出现「回到这里」。好处是快照就停在它发生的位置，一眼能看出「回到这里会丢掉下面这些」。</p>
+  <div class="dsh">
+    <div class="side"><div class="row"></div><div class="row cur">队长会话</div><div class="row"></div><div class="row"></div></div>
+    <div class="main">
+      <div class="head"><div class="title"></div><div class="sp"></div><div class="ico"></div><div class="ico"></div></div>
+      <div class="chat">
+        <div class="msg user"></div>
+        <div class="msg ai"></div>
+        <div class="bookmark hi"><span class="dia">◆</span> 17:19 快照「first」 · 3 个会话 · 12 个文件 <span class="btn pri">回到这里</span><span class="btn">⋯</span></div>
+        <div class="msg user"></div>
+        <div class="msg ai tall"></div>
+        <div class="bookmark"><span class="dia">◆</span> 17:42 快照「拆分完成」</div>
+        <div class="msg user"></div>
+      </div>
+      <div class="input"><div class="box"></div></div>
+    </div>
+  </div>
+  <p class="cap">第一条是鼠标悬停时的样子，第二条是平时的样子。「⋯」里放：改备注、删除、复制 id。</p>
+</section>
+
+<!-- 2 -->
+<section id="s2">
+  <h2>2 会话头部的时光机按钮 + 弹出时间线 <span class="tag">M5-1</span></h2>
+  <p class="why">头部右上角一个按钮，带快照数。点开就能拍照，也能看全部快照（包括已经滚出屏幕的）。PoC 已经做出了这个按钮的雏形。</p>
+  <div class="dsh">
+    <div class="side"><div class="row"></div><div class="row cur">队长会话</div><div class="row"></div></div>
+    <div class="main">
+      <div class="head"><div class="title"></div><div class="sp"></div><span class="btn hi">⟲ 3</span><div class="ico"></div><div class="ico"></div></div>
+      <div class="chat"><div class="msg user"></div><div class="msg ai tall"></div><div class="msg user"></div><div class="msg ai"></div></div>
+      <div class="input"><div class="box"></div></div>
+    </div>
+    <div class="pop hi" style="top:52px; right:70px;">
+      <div style="display:flex; gap:6px;"><span class="btn" style="flex:1; color:#aaa;">备注（可选）</span><span class="btn pri">📷 拍一张</span></div>
+      <div class="tl">
+        <div class="node"><b>17:42</b> 拆分完成<div class="sub">之后：多了 2 轮，改了 4 个文件</div></div>
+        <div class="node rescue"><b>17:30</b> 撤销点<div class="sub">恢复前自动存的</div></div>
+        <div class="node"><b>17:19</b> first<div class="sub">之后：多了 6 轮，改了 12 个文件</div></div>
+      </div>
+      <div style="text-align:right;"><span class="btn ghost" style="color:var(--hi);">在右侧栏展开 →</span></div>
+    </div>
+  </div>
+  <p class="cap">有任务在跑时「拍一张」变灰，鼠标移上去显示原因。实心点是快照，空心点是撤销点。</p>
+</section>
+
+<!-- 3 -->
+<section id="s3">
+  <h2>3 右侧栏「时光机」面板：对比视图 <span class="tag m2">M5-2，成本最高</span></h2>
+  <p class="why">给要细看的人：选中一个快照，看回去后哪些文件会变、哪些成员会话会消失。要算差异，所以工作量最大。</p>
+  <div class="dsh with-right">
+    <div class="side"><div class="row"></div><div class="row cur">队长会话</div><div class="row"></div></div>
+    <div class="main">
+      <div class="head"><div class="title"></div><div class="sp"></div><span class="btn">⟲ 3</span><div class="ico"></div></div>
+      <div class="chat"><div class="msg user"></div><div class="msg ai tall"></div><div class="msg user"></div></div>
+      <div class="input"><div class="box"></div></div>
+    </div>
+    <div class="right hi">
+      <div class="tabs"><span>文件</span><span class="on">⟲ 时光机</span></div>
+      <div style="display:grid; grid-template-columns:110px 1fr; flex:1; font-size:12px;">
+        <div style="border-right:1px solid var(--line); padding:10px;">
+          <div style="padding:4px 6px;">17:42</div>
+          <div style="padding:4px 6px; background:var(--hi-bg); border-radius:6px; color:var(--hi);">17:19 first</div>
+          <div style="padding:4px 6px;" class="mute">17:30 撤销点</div>
+        </div>
+        <div style="padding:10px;">
+          <b>回到 17:19，文件会变</b>
+          <div class="diffrow"><span class="k add">+</span>src/new-feature.ts <span class="mute">（会被删除）</span></div>
+          <div class="diffrow"><span class="k mod">~</span>src/index.ts</div>
+          <div class="diffrow"><span class="k mod">~</span>README.md</div>
+          <div class="diffrow"><span class="k del">−</span>docs/old.md <span class="mute">（会恢复）</span></div>
+          <b style="display:block; margin-top:10px;">会话</b>
+          <div class="diffrow"><span class="k del">✕</span>成员「测试员」<span class="mute">（之后才加入，会被移除）</span></div>
+          <div class="diffrow"><span class="k">·</span>成员「编码员」回到 17:19</div>
+          <b style="display:block; margin-top:10px; color:var(--warn);">⚠ 同工作区另一个团队 T2</b>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="cap">点一个文件可以看具体差异（用 DSH 自带的文件预览）。远期可以拖动时间轴比较任意两个快照。</p>
+</section>
+
+<!-- 4 -->
+<section id="s4">
+  <h2>4 恢复确认：全屏面板 vs 轻量对话框 <span class="tag">M5-1，二选一</span></h2>
+  <p class="why">点「回到这里」之后的确认。左边是草案里的全屏面板，代价分三块写清楚；右边是更轻的居中对话框，只写一句话。两种按下后都会进入下面的过渡页。</p>
+  <div class="pair">
+    <div>
+      <div class="dsh">
+        <div class="side"></div>
+        <div class="main"><div class="head"></div><div class="chat"><div class="msg ai"></div></div></div>
+        <div class="overlay">
+          <div class="sheet hi">
+            <h3>回到 17:19「first」</h3>
+            <div class="mute" style="font-size:12px;">会先自动存一个撤销点，随时可以撤销。</div>
+            <div class="cards">
+              <div class="card"><b>会丢掉</b>之后的 6 轮对话<br>1 个后加入的成员会话</div>
+              <div class="card"><b>文件会变</b>+3 −1 ~8<br><span class="mute">被忽略的生成物（dist 等）不回退</span></div>
+              <div class="card warn"><b>其他团队</b>同工作区的 T2 的文件也会回退</div>
+            </div>
+            <div style="text-align:right; display:flex; gap:8px; justify-content:flex-end;"><span class="btn">取消</span><span class="btn pri">回到 17:19</span></div>
+          </div>
+        </div>
+      </div>
+      <p class="cap"><b>A 全屏面板</b>：信息最全，不容易误点；占满屏幕，比较「重」。</p>
+    </div>
+    <div>
+      <div class="dsh">
+        <div class="side"></div>
+        <div class="main"><div class="head"></div><div class="chat"><div class="msg ai"></div></div></div>
+        <div class="overlay" style="background:rgba(30,32,40,.25);">
+          <div class="dialog hi">
+            <b>回到 17:19「first」？</b>
+            <p style="font-size:13px; margin:8px 0;">之后的 6 轮对话和 11 处文件改动会被撤回，会先自动存撤销点。被忽略的生成物不回退。</p>
+            <div class="mute" style="font-size:12px; margin-bottom:12px;">▸ 查看详情</div>
+            <div style="display:flex; gap:8px; justify-content:flex-end;"><span class="btn">取消</span><span class="btn pri">回到 17:19</span></div>
+          </div>
+        </div>
+      </div>
+      <p class="cap"><b>B 轻量对话框</b>：快，像普通确认；细节收在「查看详情」里（可以跳到 3 的对比视图）。</p>
+    </div>
+  </div>
+  <h3 style="font-size:15px; margin:22px 0 8px;">按下后的过渡页（A、B 共用）</h3>
+  <div class="dsh" style="height:240px;">
+    <div class="side"></div>
+    <div class="main"><div class="head"></div><div class="chat"></div></div>
+    <div class="overlay" style="background:rgba(255,255,255,.92);">
+      <div class="hi" style="width:560px; text-align:center; padding:18px; border-radius:12px;">
+        <div style="font-size:28px; color:var(--hi);">⟲</div>
+        <b>正在回到 17:19…</b>
+        <div class="steps"><span class="done">✓ 存撤销点</span><span class="done">✓ 退出</span><span class="now">恢复文件</span><span>恢复会话</span><span>重启</span></div>
+        <div class="mute" style="font-size:12px; margin-top:10px;">网页端：重启完成后页面会自动刷新。桌面端：DSH 会关闭，弹出对话框后点「重启」。</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 5 -->
+<section id="s5">
+  <h2>5 恢复后的提示条 <span class="tag">M5-1</span></h2>
+  <p class="why">回来之后，输入框上方停一条细提示，位置和 DSH 的目标条（GoalBar）一样。提醒你现在在过去的哪个点，后悔了可以一键撤销。</p>
+  <div class="dsh" style="height:340px;">
+    <div class="side"><div class="row"></div><div class="row cur">队长会话</div></div>
+    <div class="main">
+      <div class="head"><div class="title"></div><div class="sp"></div><div class="ico"></div></div>
+      <div class="chat"><div class="msg user"></div><div class="msg ai tall"></div></div>
+      <div class="input">
+        <div class="dock hi"><span style="color:var(--hi);">⟲</span> 已回到 17:19 的快照「first」<span class="sp"></span><span class="btn">撤销</span><span class="btn ghost">×</span></div>
+        <div class="box"></div>
+      </div>
+    </div>
+  </div>
+  <p class="cap">一直显示，直到你点 ×、发出下一条消息，或者下一次恢复。撤销点被删除后，「撤销」按钮会消失。</p>
+</section>
+
+<!-- 6 -->
+<section id="s6">
+  <h2>6 左侧会话列表的小标记 <span class="tag m2">M5-2</span></h2>
+  <p class="why">有快照的队长会话左边多一个小菱形，鼠标移上去显示条数和最近时间。很轻，作用是帮你在一堆会话里找到能回溯的那个。</p>
+  <div class="dsh" style="height:300px; grid-template-columns:260px 1fr;">
+    <div class="side">
+      <div class="row">普通会话</div>
+      <div class="row cur hi"><span class="dot">◆</span>队长会话 · say-one-sentence</div>
+      <div style="margin:-4px 0 8px 24px; font-size:12px; background:#222; color:#fff; padding:3px 8px; border-radius:6px; width:max-content;">3 个快照，最近 17:42</div>
+      <div class="row">普通会话</div>
+      <div class="row"><span class="dot">◆</span>队长会话 · T2</div>
+      <div class="row">普通会话</div>
+    </div>
+    <div class="main"><div class="head"></div><div class="chat"><div class="msg ai"></div></div></div>
+  </div>
+</section>
+
+<footer>
+  选的时候可以直接说，比如「1+2+5，确认用 B」。没选的可以以后再加，代码互相独立。
+</footer>
+</body>
+</html>
