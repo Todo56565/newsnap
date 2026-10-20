@@ -26,6 +26,43 @@ export class GitError extends Error {
   override name = 'GitError'
 }
 
+/** 找不到可用的 git（测试报告 B1：DSH 桌面端不自带 git）。 */
+export class GitMissing extends Error {
+  override name = 'GitMissing'
+}
+
+let gitBinary: Promise<string> | undefined
+
+function probe(file: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    execFile(file, ['--version'], { windowsHide: true, timeout: 10_000 }, (error) => resolve(error === null))
+  })
+}
+
+/** git 候选：NEWSNAP_GIT、PATH 上的 git，Windows 再加 Git for Windows 的默认位置。 */
+export function gitCandidates(env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string[] {
+  const out: string[] = []
+  if (env.NEWSNAP_GIT) out.push(env.NEWSNAP_GIT)
+  out.push('git')
+  if (platform === 'win32') {
+    for (const base of [env.ProgramFiles, env['ProgramFiles(x86)'], env.LOCALAPPDATA && join(env.LOCALAPPDATA, 'Programs')]) {
+      if (base) out.push(join(base, 'Git', 'cmd', 'git.exe'))
+    }
+  }
+  return out
+}
+
+/** 解析并缓存可用的 git；都不行抛 GitMissing（中文说明）。 */
+export function resolveGit(): Promise<string> {
+  gitBinary ??= (async () => {
+    const tried = gitCandidates()
+    for (const c of tried) if (await probe(c)) return c
+    gitBinary = undefined // 用户装好 git 后下次重试
+    throw new GitMissing(`未找到 git（试过：${tried.join('、')}）。newsnap 用 git 给工作区拍照，请安装 Git（Windows 可装 Git for Windows），或用环境变量 NEWSNAP_GIT 指向 git 可执行文件，然后重启 DSH。`)
+  })()
+  return gitBinary
+}
+
 interface RunOptions {
   readonly env?: Readonly<Record<string, string>>
   readonly input?: string | Buffer
@@ -33,12 +70,13 @@ interface RunOptions {
 }
 
 /** 跑 git；清掉调用方环境里可能干扰的 GIT_* 变量，只用传入的。 */
-export function git(args: readonly string[], options: RunOptions = {}): Promise<string> {
+export async function git(args: readonly string[], options: RunOptions = {}): Promise<string> {
+  const file = await resolveGit()
   const base: Record<string, string> = {}
   for (const [k, v] of Object.entries(process.env)) if (v !== undefined && !k.startsWith('GIT_')) base[k] = v
   return new Promise((resolve, reject) => {
     const child = execFile(
-      'git',
+      file,
       [...args],
       {
         env: {
@@ -50,6 +88,7 @@ export function git(args: readonly string[], options: RunOptions = {}): Promise<
         },
         cwd: options.cwd,
         maxBuffer: 1024 * 1024 * 1024,
+        windowsHide: true,
         encoding: 'utf8',
       },
       (error, stdout, stderr) => {
@@ -70,8 +109,14 @@ export async function ensureRepo(repoDir: string): Promise<void> {
   try {
     await stat(join(repoDir, 'HEAD'))
   } catch {
+    await resolveGit() // 先确认有 git，免得留下空的 repo.git
     await mkdir(repoDir, { recursive: true })
-    await git(['init', '--bare', '-q', repoDir])
+    try {
+      await git(['init', '--bare', '-q', repoDir])
+    } catch (error) {
+      await rm(repoDir, { recursive: true, force: true })
+      throw error
+    }
   }
   for (const [k, v] of [['core.autocrlf', 'false'], ['gc.auto', '0'], ['core.symlinks', 'true']] as const) {
     await git(['--git-dir', repoDir, 'config', k, v])

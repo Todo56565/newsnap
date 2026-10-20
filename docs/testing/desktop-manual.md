@@ -29,12 +29,13 @@
 2. `/newsnap restore <id> confirm`。
 3. **观察并记录**：
    - [ ] 是否弹出「启动失败」对话框；对话框文字（截图）
-   - [ ] 从输入 confirm 到对话框出现大约几秒
+   - [ ] 从输入 confirm 到对话框出现大约几秒（预期 10 秒内，不需要再手动结束进程）
    - [ ] 等 2 秒后点「重启」
 4. 重启后：
    - [ ] `target.txt` 是 `v1`，`added.txt` 已删除
    - [ ] 队长会话还在，快照之后的那一轮没了（发起恢复那一轮也没了）
-   - [ ] `/newsnap status` 显示「已恢复到快照 …，/newsnap undo 可撤销」
+   - [ ] 拍照那条 `/newsnap snap` 显示为已完成（不再一直「执行中」）
+   - [ ] `/newsnap status` 显示「已恢复到快照 …，/newsnap undo 可撤销」；刷新页面或再重启一次后，仍显示「最近一次操作是 … 的恢复到快照 …」
    - [ ] `helper.log` 有 `DSH exited after`、`restored to snapshot`，**没有** `relaunch:` 行；`session guard:` 后面是什么，记下来（预期：macOS/Linux 为 `flock`，Windows 为 `win32-semaphore`；`assume-stopped` 说明没加载到宿主的锁模块）
    - [ ] Windows：点 confirm 后有没有黑色控制台窗口闪过
    - [ ] Windows：`helper.log` 里有没有 `EBUSY`、`EPERM`、`restore error` 之类的文件占用错误

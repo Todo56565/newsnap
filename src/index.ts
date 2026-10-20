@@ -13,6 +13,7 @@ import { spawn } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { lastApplied } from './core/apply.ts'
+import { GitMissing } from './core/shadow-git.ts'
 import { newsnapRoot, resolveDshHome } from './core/paths.ts'
 import { listSnapshots } from './core/store.ts'
 import { UnsupportedTeamState } from './core/teams.ts'
@@ -21,6 +22,7 @@ import { NotATeamSession, SnapshotBlocked, takeSnapshot, teamFor, type HostRunti
 import { formatBlocked, formatList, formatSnapshot } from './host/format.ts'
 import { registerDevTool } from './host/dev-tool.ts'
 import { reconcile, type Notice } from './host/reconcile.ts'
+import { markCommandClosed, pendingCommandFixes } from './host/open-commands.ts'
 import { continueRestore, previewRestore, relaunchesItself, RestoreNotFound, RestoreUnsupported, startRestore, type Impact, type RestoreContext } from './host/restore.ts'
 
 export const name = 'newsnap'
@@ -37,6 +39,21 @@ const DESKTOP_RESTART = '桌面端会弹出「启动失败」对话框，这是 
 function comeBack(profile: string, done = '恢复完成后'): string {
   if (!relaunchesItself(profile)) return DESKTOP_RESTART
   return profile === 'web' ? `${done}自动重新启动；页面重新连上后请刷新一次，否则看到的仍是恢复前的对话` : `${done}自动重新启动`
+}
+
+/**
+ * appExit 只是请启动器拆掉插件树、设 exitCode、等事件循环自己排空（apps/cli process-shutdown.ts）。
+ * 桌面宿主和 Electron 之间的 IPC 通道会让循环永远排不空，进程不退出（测试报告 B2）。
+ * 所以 appExit 之后用不挂在插件上下文上的原生定时器兜底：1 秒后断开 IPC（桌面宿主自己把断开当停机），
+ * 8 秒仍未退出就直接退出。定时器 unref，不拖住本来就能正常退出的 web/headless。
+ */
+function armExitFallback(): void {
+  setTimeout(() => {
+    if (process.connected) process.disconnect()
+  }, 1000).unref()
+  setTimeout(() => {
+    process.exit(0)
+  }, 8000).unref()
 }
 
 function describeImpact(i: Impact, command: string, profile: string): string {
@@ -91,7 +108,10 @@ export function apply(ctx: Context): void {
         child.unref()
         return child.pid
       },
-      schedule: (fn) => setImmediate(fn),
+      schedule: (fn) => setImmediate(() => {
+        fn()
+        armExitFallback()
+      }),
     }
   }
 
@@ -115,6 +135,7 @@ export function apply(ctx: Context): void {
           const manifest = await takeSnapshot(host, {
             home, cwd, sessionId: session.id,
             ...(note !== '' && { note }),
+            ...(typeof invocation.commandId === 'string' && { commandId: invocation.commandId }),
             versions: { newsnap: VERSION, node: process.version },
           })
           return { kind: 'success', text: formatSnapshot(manifest) }
@@ -151,12 +172,18 @@ export function apply(ctx: Context): void {
         }
         case 'status': {
           const text = noticeText(cwd)
-          return { kind: 'success', text: text === '' ? 'newsnap：没有待处理的恢复。' : text }
+          if (text !== '') return { kind: 'success', text }
+          const last = await lastApplied(home, cwd)
+          if (last === undefined) return { kind: 'success', text: 'newsnap：没有待处理的恢复。' }
+          const when = new Date(last.result?.at ?? last.createdAt).toLocaleString()
+          const what = last.target.kind === 'snapshot' ? `恢复到快照 ${last.target.id}` : `撤销（回到救援点 ${last.target.id}）`
+          return { kind: 'success', text: `newsnap：没有待处理的恢复。最近一次操作是 ${when} 的${what}，/newsnap undo 可撤销。` }
         }
         default:
           return { kind: 'error', text: USAGE }
       }
     } catch (error) {
+      if (error instanceof GitMissing) return { kind: 'error', text: `newsnap：${error.message}` }
       if (error instanceof SnapshotBlocked) return { kind: 'error', text: formatBlocked(error.blockers, sub === 'snap' ? '拍快照' : '恢复') }
       if (error instanceof NotATeamSession) return { kind: 'error', text: 'newsnap：当前会话不属于任何活动团队。' }
       if (error instanceof UnsupportedTeamState) return { kind: 'error', text: `newsnap：团队状态格式不认识，拒绝操作（${error.message}）。` }
@@ -176,6 +203,34 @@ export function apply(ctx: Context): void {
   })
 
   registerDevTool(ctx, run)
+
+  // 恢复后补记快照里悬空的 /newsnap snap 命令（测试报告 B4）
+  void pendingCommandFixes(home).then((fixes) => {
+    if (fixes.length === 0) return
+    const started = new Set<string>()
+    const close = (session: { id: string; append: unknown }): void => {
+      const fix = fixes.find((f) => f.sessionId === session.id && !started.has(f.key))
+      if (fix === undefined) return
+      started.add(fix.key)
+      setImmediate(() => {
+        try {
+          const append = (session.append as (type: string, data: object) => unknown).bind(session)
+          append('command/done', { commandId: fix.commandId, kind: 'success', text: fix.text })
+          void markCommandClosed(fix.root, fix.key)
+        } catch (error) {
+          started.delete(fix.key)
+          ctx.logger?.warn?.(`newsnap: closing restored command ${fix.commandId} failed: ${String(error)}`)
+        }
+      })
+    }
+    ctx.on('session/created', (session) => close(session as unknown as { id: string; append: unknown }))
+    for (const f of fixes) {
+      const live = ctx.sessions.get(f.sessionId as SessionId)
+      if (live !== undefined) close(live as unknown as { id: string; append: unknown })
+    }
+  }, (error: unknown) => {
+    ctx.logger?.warn?.(`newsnap: scanning restored commands failed: ${String(error)}`)
+  })
 
   // 启动对账 + 清理所有工作区根下的拍照残骸
   void reconcile(home).then((found) => {

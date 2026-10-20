@@ -11,7 +11,7 @@ import { newId, sha256File, writeJsonAtomic } from './fsutil.ts'
 import { layout, writeManifest, type SnapManifest, type SnapSession } from './manifest.ts'
 import { agentTeamsRoot, currentGeneration, encodeSegment, newsnapRoot, sessionDir } from './paths.ts'
 import { descendantsOf, listProjectSessions } from './sessions.ts'
-import { DEFAULT_MAX_FILE_BYTES, git, snapshotWorkspace } from './shadow-git.ts'
+import { DEFAULT_MAX_FILE_BYTES, git, resolveGit, snapshotWorkspace } from './shadow-git.ts'
 import { AGENT_TEAMS_LAYOUT, listTeamIds, readRetiredMemberIds, teamSessionIds, type TeamSummary } from './teams.ts'
 import { copyTree, isClean, scanTree, verifyTree, type TreeEntry } from './tree.ts'
 
@@ -45,6 +45,7 @@ export interface CaptureParams {
   readonly versions?: Readonly<Record<string, string>>
   readonly id?: string
   readonly now?: number
+  readonly openCommand?: SnapManifest['openCommand']
   /**
    * 救援点用（DSH 已退出时）：额外收录的会话 id（快照里有、现在团队里已没有的成员），
    * 会话目录不存在就跳过而不是报错，并且复制会话目录里的全部代文件（回滚要原样恢复）。
@@ -119,6 +120,7 @@ export async function captureSnapshot(params: CaptureParams): Promise<SnapManife
   const L = layout(newsnapRoot(home, cwd))
   const dir = kind === 'snapshot' ? L.snapDir(id) : L.rescueDir(id)
   const ref = `${kind}/${id}`
+  await resolveGit() // 没有 git 就先报错，不建任何目录
   await mkdir(kind === 'snapshot' ? L.snaps : L.rescue, { recursive: true })
   await mkdir(dir) // 已存在就抛错，不覆盖别人的目录
   try {
@@ -169,6 +171,7 @@ export async function captureSnapshot(params: CaptureParams): Promise<SnapManife
       retiredTeamMembers,
       workspace: { commit: ws.commit, mtimes: 'mtimes.json', skipped: ws.skipped },
       otherTeams: (await listTeamIds(cwd)).filter((t) => t !== team.id),
+      ...(params.openCommand !== undefined && { openCommand: params.openCommand }),
       versions: params.versions ?? {},
     }
     await writeManifest(dir, manifest)

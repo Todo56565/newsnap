@@ -55,6 +55,11 @@ export interface SnapManifest {
   }
   /** 拍照时同工作区的其他活动团队 id。 */
   readonly otherTeams: readonly string[]
+  /**
+   * 拍照所在的斜杠命令（DSH 先写 command/run、处理函数返回后才写 command/done，
+   * 所以快照里的会话日志带着这条没收尾的 run）。恢复后由插件补一条配对的 command/done。
+   */
+  readonly openCommand?: { readonly sessionId: string; readonly commandId: string; readonly text: string }
   readonly versions: Readonly<Record<string, string>>
 }
 
@@ -146,6 +151,10 @@ export function validateManifest(value: unknown): SnapManifest {
   const ws = value.workspace
   need(isRecord(ws) && isStr(ws.commit) && isStr(ws.mtimes) && isStrArray(ws.skipped), 'workspace invalid')
   need(isStrArray(value.otherTeams), 'otherTeams invalid')
+  if (value.openCommand !== undefined) {
+    const oc = value.openCommand as Record<string, unknown>
+    need(typeof oc === 'object' && oc !== null && typeof oc.sessionId === 'string' && typeof oc.commandId === 'string' && typeof oc.text === 'string', 'openCommand invalid')
+  }
   need(isRecord(value.versions) && Object.values(value.versions).every(isStr), 'versions invalid')
   return value as unknown as SnapManifest
 }

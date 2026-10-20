@@ -326,7 +326,11 @@ export async function archivePending(home: string, cwd: string): Promise<string 
 
 /** 最近一次成功的恢复（当前登记或 history/ 里最新的一份），撤销用。 */
 export async function lastApplied(home: string, cwd: string): Promise<PendingRestore | undefined> {
-  const root = newsnapRoot(home, cwd)
+  return lastAppliedIn(newsnapRoot(home, cwd))
+}
+
+/** 同 lastApplied，直接给工作区根。 */
+export async function lastAppliedIn(root: string): Promise<PendingRestore | undefined> {
   const current = await readPending(root).catch(() => undefined)
   if (current !== undefined) return current.status === 'applied' ? current : undefined
   let names: string[] = []

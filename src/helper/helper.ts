@@ -11,10 +11,10 @@ import { dirname, join } from 'node:path'
 import { readPending, writePending } from '../core/manifest.ts'
 import { newsnapRoot } from '../core/paths.ts'
 import { relaunchCommand } from '../core/relaunch.ts'
-import { assumeStoppedGuard, loadFlockGuard } from '../core/session-guard.ts'
+import { assumeStoppedGuard, hostSearchDirs, loadFlockGuard } from '../core/session-guard.ts'
 import { runApply, runRollback } from '../core/apply.ts'
 
-export const PARENT_EXIT_TIMEOUT_MS = 60_000
+export const PARENT_EXIT_TIMEOUT_MS = 20_000
 
 function alive(pid: number): boolean {
   try {
@@ -54,8 +54,14 @@ export async function runHelper(home: string, cwd: string, parentPid: number, mo
   await log(`DSH exited after ${Date.now() - t0} ms`)
 
   const relaunch = pending.relaunch
-  const searchFrom = relaunch?.argv[0] !== undefined ? [dirname(relaunch.argv[0]), dirname(dirname(relaunch.argv[0]))] : []
-  const guard = (await loadFlockGuard(searchFrom)) ?? assumeStoppedGuard(`parent ${parentPid} exited`)
+  const searchFrom = hostSearchDirs(relaunch?.argv[0] !== undefined ? [dirname(relaunch.argv[0]), dirname(dirname(relaunch.argv[0]))] : [])
+  const misses: string[] = []
+  const guard = (await loadFlockGuard(searchFrom, (from, error) => {
+    misses.push(`${from}: ${error instanceof Error ? error.message.split('\n')[0] : String(error)}`)
+  })) ?? assumeStoppedGuard(`parent ${parentPid} exited`)
+  if (guard.kind.startsWith('assume-stopped')) {
+    await log(`session lock module not loaded (${process.platform === 'win32' ? 'koffi' : 'flock'}); tried: ${misses.length === 0 ? '(no candidates)' : misses.join(' | ')}`)
+  }
   await log(`session guard: ${guard.kind}`)
 
   let message: string

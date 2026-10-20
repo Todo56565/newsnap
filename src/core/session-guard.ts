@@ -103,26 +103,49 @@ export function assumeStoppedGuard(reason: string): SessionGuard {
 }
 
 /**
+ * 扩展查找起点（测试报告 B3）：NEWSNAP_DSH_DIR 优先；桌面端的路径在 `app.asar` 里，而原生模块
+ * （flock、koffi）在旁边的 `app.asar.unpacked`，所以每个含 `app.asar` 的起点再加一个替换后的；
+ * Windows 再加桌面端默认安装位置。
+ */
+export function hostSearchDirs(seeds: readonly string[], env: NodeJS.ProcessEnv = process.env, platform: NodeJS.Platform = process.platform): string[] {
+  const out: string[] = []
+  const add = (d: string | undefined): void => {
+    if (d !== undefined && d !== '' && !out.includes(d)) out.push(d)
+  }
+  add(env.NEWSNAP_DSH_DIR)
+  for (const seed of seeds) {
+    const unpacked = seed.replace(/([\\/])app\.asar(?=[\\/]|$)/, '$1app.asar.unpacked')
+    if (unpacked !== seed) add(unpacked)
+    add(seed)
+  }
+  if (platform === 'win32' && env.LOCALAPPDATA) {
+    add(join(env.LOCALAPPDATA, 'Programs', 'DeepSeek Harness', 'resources', 'app.asar.unpacked', 'dsh'))
+  }
+  return out
+}
+
+/**
  * 试着从若干位置加载宿主的 flock 原生模块。
  * searchFrom：用于 require.resolve 的起点（DSH 安装目录、process.argv[1] 等）。
  */
-export async function loadFlockGuard(searchFrom: readonly string[]): Promise<SessionGuard | undefined> {
-  if (process.platform === 'win32') return loadSemaphoreGuard(searchFrom)
+export async function loadFlockGuard(searchFrom: readonly string[], onMiss?: (from: string, error: unknown) => void): Promise<SessionGuard | undefined> {
+  if (process.platform === 'win32') return loadSemaphoreGuard(searchFrom, onMiss)
   for (const from of searchFrom) {
     try {
       const require = createRequire(from.endsWith('/') ? from : `${from}/`)
       const resolved = require.resolve('@deepseek-ai/node-addon-system/flock')
       const mod = (await import(pathToFileURL(resolved).href)) as { tryLockExclusive?: TryLock }
       if (typeof mod.tryLockExclusive === 'function') return flockGuard(mod.tryLockExclusive)
-    } catch {
-      // 换下一个位置
+      onMiss?.(from, new Error('module has no tryLockExclusive'))
+    } catch (error) {
+      onMiss?.(from, error) // 换下一个位置
     }
   }
   return undefined
 }
 
 /** Windows：从 DSH 安装里加载 koffi（宿主自己就靠它调 kernel32），绑定信号量 API。 */
-async function loadSemaphoreGuard(searchFrom: readonly string[]): Promise<SessionGuard | undefined> {
+async function loadSemaphoreGuard(searchFrom: readonly string[], onMiss?: (from: string, error: unknown) => void): Promise<SessionGuard | undefined> {
   for (const from of searchFrom) {
     try {
       const require = createRequire(join(from, 'x.js'))
@@ -138,8 +161,8 @@ async function loadSemaphoreGuard(searchFrom: readonly string[]): Promise<Sessio
         getLastError: k.func('__stdcall', 'GetLastError', 'uint', []) as Win32SemaphoreApi['getLastError'],
       }
       return semaphoreGuard(api)
-    } catch {
-      // 换下一个位置
+    } catch (error) {
+      onMiss?.(from, error) // 换下一个位置
     }
   }
   return undefined

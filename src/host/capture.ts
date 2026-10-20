@@ -41,6 +41,8 @@ export interface TakeSnapshotParams {
   readonly note?: string
   readonly versions?: Readonly<Record<string, string>>
   readonly maxFileBytes?: number
+  /** 发起拍照的斜杠命令 id（有的话）。 */
+  readonly commandId?: string
 }
 
 export async function teamFor(cwd: string, sessionId: string): Promise<TeamSummary> {
@@ -84,6 +86,7 @@ export async function takeSnapshot(host: HostRuntime, params: TakeSnapshotParams
       ...(params.note !== undefined && { note: params.note }),
       ...(params.versions !== undefined && { versions: params.versions }),
       ...(params.maxFileBytes !== undefined && { maxFileBytes: params.maxFileBytes }),
+      ...(params.commandId !== undefined && { openCommand: { sessionId: params.sessionId, commandId: params.commandId, text: '已拍快照（恢复后由 newsnap 补记）。' } }),
     })
   } finally {
     unfreeze()

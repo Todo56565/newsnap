@@ -21,7 +21,8 @@ import { ACTIVE_STATUSES, lastApplied, registerRestore, runApply, runRollback } 
 import { layout, readPending } from './core/manifest.ts'
 import { pidAlive } from './core/lock.ts'
 import { newsnapRoot, resolveDshHome } from './core/paths.ts'
-import { assumeStoppedGuard, loadFlockGuard, type SessionGuard } from './core/session-guard.ts'
+import { resolveGit } from './core/shadow-git.ts'
+import { assumeStoppedGuard, hostSearchDirs, loadFlockGuard, type SessionGuard } from './core/session-guard.ts'
 import { cleanupPartials, listSnapshots } from './core/store.ts'
 import { formatBlocked, formatSnapshot, formatTime } from './host/format.ts'
 import { captureSnapshot, resolveTeamSessions } from './core/capture.ts'
@@ -40,7 +41,6 @@ const USAGE = `用法：
 /** 找宿主 flock 模块的起点：NEWSNAP_DSH_DIR、PATH 上的 dsh 实际位置、当前目录。 */
 function flockSearchDirs(cwd: string): string[] {
   const dirs: string[] = []
-  if (process.env.NEWSNAP_DSH_DIR) dirs.push(process.env.NEWSNAP_DSH_DIR)
   try {
     const bin = execFileSync(process.platform === 'win32' ? 'where' : 'which', ['dsh'], { encoding: 'utf8' }).split('\n')[0]?.trim()
     if (bin) {
@@ -56,7 +56,7 @@ function flockSearchDirs(cwd: string): string[] {
     // 没装 dsh 或不在 PATH
   }
   dirs.push(cwd)
-  return dirs
+  return hostSearchDirs(dirs)
 }
 
 async function guardFor(cwd: string, dshStopped: boolean): Promise<SessionGuard> {
@@ -185,7 +185,8 @@ async function doctor(home: string, cwd: string, root: string): Promise<number> 
   out(`DSH_HOME：${home}`)
   out(`newsnap 目录：${root}`)
   const flock = await loadFlockGuard(flockSearchDirs(cwd))
-  out(`会话写锁探测：${flock === undefined ? '不可用（apply 需要 --dsh-stopped）' : '可用'}`)
+  out(`会话写锁探测：${flock === undefined ? '不可用（apply 需要 --dsh-stopped）' : `可用（${flock.kind}）`}`)
+  out(`git：${await resolveGit().then((g) => g, (e: unknown) => (e instanceof Error ? e.message : String(e)))}`)
   try {
     const holder = JSON.parse(await readFile(L.lock, 'utf8')) as { pid: number; purpose: string; time: number }
     out(`newsnap 锁：${holder.purpose}，pid ${holder.pid}${pidAlive(holder.pid) ? '' : '（进程已不在，下次操作会接管）'}，${formatTime(holder.time)}`)
