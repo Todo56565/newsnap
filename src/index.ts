@@ -22,6 +22,7 @@ import { NotATeamSession, SnapshotBlocked, takeSnapshot, teamFor, type HostRunti
 import { formatBlocked, formatList, formatSnapshot } from './host/format.ts'
 import { registerDevTool } from './host/dev-tool.ts'
 import { registerRemote } from './host/remote.ts'
+import { errorText } from './host/errors.ts'
 import { reconcile, type Notice } from './host/reconcile.ts'
 import { markCommandClosed, pendingCommandFixes } from './host/open-commands.ts'
 import { continueRestore, previewRestore, relaunchesItself, RestoreNotFound, RestoreUnsupported, startRestore, type Impact, type RestoreContext } from './host/restore.ts'
@@ -213,14 +214,7 @@ export function apply(ctx: Context): void {
           return { kind: 'error', text: USAGE }
       }
     } catch (error) {
-      if (error instanceof GitMissing) return { kind: 'error', text: `newsnap：${error.message}` }
-      if (error instanceof SnapshotBlocked) return { kind: 'error', text: formatBlocked(error.blockers, sub === 'snap' ? '拍快照' : '恢复') }
-      if (error instanceof NotATeamSession) return { kind: 'error', text: 'newsnap：当前会话不属于任何活动团队。' }
-      if (error instanceof UnsupportedTeamState) return { kind: 'error', text: `newsnap：团队状态格式不认识，拒绝操作（${error.message}）。` }
-      if (error instanceof LockBusy) return { kind: 'error', text: `newsnap：另一项操作正在进行（${error.holder.purpose}）。` }
-      if (error instanceof RemoveRefused || error instanceof SnapshotNotFound) return { kind: 'error', text: `newsnap：${error.message}` }
-      if (error instanceof RestoreUnsupported || error instanceof RestoreNotFound) return { kind: 'error', text: `newsnap：${error.message}` }
-      return { kind: 'error', text: `newsnap 失败：${error instanceof Error ? error.message : String(error)}` }
+      return { kind: 'error', text: errorText(error, sub === 'snap' ? '拍快照' : '恢复') }
     }
   }
 
