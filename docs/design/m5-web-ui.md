@@ -124,3 +124,27 @@
   - 5 提示条：`conversation.input.dock`，显示最近一次恢复/撤销，带「撤销」（救援点还在时）和 ×；关闭记在 localStorage（按团队+恢复时间）。**发下一条消息后自动消失未做**。
 - 网页 e2e（test/e2e/web/m5.mjs）通过：书签卡出现 → 确认框 → 过渡层 → 12 秒后自动刷新、文件回到 v1 → 提示条 → 撤销 → 14 秒后自动刷新、文件回到 v2 → 提示条变「已撤销上一次恢复」→ × 关闭。控制台只有重启期间的连接拒绝。
 - 已知：文案只有中文；网页上无斜杠命令时拍的快照（Remote snap）没有书签卡（M5-2 时间线里会有）。
+
+## 6. M5-2 设计：右侧栏「时光机」（10-21，待用户批准写代码）
+
+用户定：只和「现在」对比，不做任选两张快照互比。
+
+**挂载**：照 ui-sidebar-files / ui-deliverables 的做法。
+- `ctx.sidebarRightTabs.register({ id: 'newsnap/timeline', kind: 'newsnap-timeline', patterns: ['dsh-resource://newsnap/**'], title, guide 入口「时光机 · 快照与对比」 })`
+- `sidebar.right.pane.tab` / `sidebar.right.pane.tab.title` 按同一 id 注册标签页正文和标题。
+- 打开：右栏「+」的引导页胶囊；书签悬停时在「回到这里」旁加「对比」，调 `ctx.sidebarRight.openResource('dsh-resource://newsnap/<snapId>')` 直接选中该快照。
+
+**正文**（上下两段，全部用 DSH 原生组件和 --dsw 令牌）：
+1. 时间线：顶部「现在」，下面按时间倒序列快照（时间、备注、会话数），恢复/撤销记录作为细的分隔行。点选一项。
+2. 选中快照的对比（快照 → 现在会怎样）：
+   - 文件：新增/修改/删除计数，文件列表；点文件用 ui-primitives 的 `DiffBlock`（oldText/newText）展开 diff。被 .gitignore 忽略的生成物照例提示不回退。
+   - 会话影响：每个会话会退回几轮、会消失哪些会话。
+   - 底部「回到这里」，复用 B 确认框。
+
+**宿主端新增 Remote 方法**：
+- `newsnap/compare { sessionId, snapId }` → 文件变化列表（路径、状态、大小）+ 会话影响；用影子 git 对比快照树与当前工作区（不写入）。
+- `newsnap/fileDiff { sessionId, snapId, path }` → `{ oldText, newText }`，超大或二进制文件只给提示。
+
+**测试**：compare / fileDiff 单测；一次真实网页验证（打开标签页、选快照、看 diff、从标签页恢复）。
+
+**不做**：快照互比、会话列表标记、轮次导航条快照线。
