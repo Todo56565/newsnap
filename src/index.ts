@@ -217,6 +217,7 @@ export function apply(ctx: Context): void {
           const append = (session.append as (type: string, data: object) => unknown).bind(session)
           append('command/done', { commandId: fix.commandId, kind: 'success', text: fix.text })
           void markCommandClosed(fix.root, fix.key)
+          ctx.logger?.info?.(`newsnap: closed restored command ${fix.commandId} in ${fix.sessionId}`)
         } catch (error) {
           started.delete(fix.key)
           ctx.logger?.warn?.(`newsnap: closing restored command ${fix.commandId} failed: ${String(error)}`)
