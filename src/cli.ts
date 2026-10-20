@@ -7,6 +7,8 @@
  *   newsnap undo [--cwd <dir>] [--dsh-stopped]         恢复到上一次恢复前的救援点
  *   newsnap rollback [--cwd <dir>] [--dsh-stopped]     卡在 applying 时用救援点回滚
  *   newsnap doctor [--cwd <dir>]
+ *   newsnap delete <id> [--yes] [--cwd <dir>]           删一份快照或救援点，并 gc 影子仓库
+ *   newsnap purge [--yes] [--cwd <dir>]                 删本工作区全部 newsnap 数据
  *
  * 会话写锁靠宿主的 flock 原生模块确认 DSH 已退出；找不到它时必须加 --dsh-stopped 由用户担保。
  * @module newsnap/cli
@@ -23,7 +25,7 @@ import { pidAlive } from './core/lock.ts'
 import { newsnapRoot, resolveDshHome } from './core/paths.ts'
 import { resolveGit } from './core/shadow-git.ts'
 import { assumeStoppedGuard, hostSearchDirs, loadFlockGuard, type SessionGuard } from './core/session-guard.ts'
-import { cleanupPartials, listSnapshots } from './core/store.ts'
+import { cleanupPartials, findSnapshot, hasRescue, listSnapshots, purgeWorkspace, removeSnapshot } from './core/store.ts'
 import { formatBlocked, formatSnapshot, formatTime } from './host/format.ts'
 import { captureSnapshot, resolveTeamSessions } from './core/capture.ts'
 import { acquireLock } from './core/lock.ts'
@@ -36,7 +38,9 @@ const USAGE = `用法：
   newsnap list [--rescue] [--cwd <dir>]
   newsnap apply <id> [--rescue] [--cwd <dir>] [--dsh-stopped]
   newsnap resume | undo | rollback [--cwd <dir>] [--dsh-stopped]
-  newsnap doctor [--cwd <dir>]`
+  newsnap doctor [--cwd <dir>]
+  newsnap delete <id> [--yes] [--cwd <dir>]
+  newsnap purge [--yes] [--cwd <dir>]`
 
 /** 找宿主 flock 模块的起点：NEWSNAP_DSH_DIR、PATH 上的 dsh 实际位置、当前目录。 */
 function flockSearchDirs(cwd: string): string[] {
@@ -66,6 +70,11 @@ async function guardFor(cwd: string, dshStopped: boolean): Promise<SessionGuard>
   throw new Error('找不到 DSH 的会话锁模块（POSIX 为 flock，Windows 为 koffi），无法确认 DSH 已退出。请先关掉 DSH，再加 --dsh-stopped 重试（或设置 NEWSNAP_DSH_DIR 指向 DSH 安装目录）。')
 }
 
+export function describeDelete(kind: 'snapshot' | 'rescue', id: string, createdAt: number, undoLost: boolean): string {
+  const what = kind === 'rescue' ? '救援点' : '快照'
+  return `将删除${what} ${id}（${formatTime(createdAt)}）及其在影子仓库里独占的数据，删除后不能找回。${undoLost ? '它是最近一次恢复的救援点，删除后不能再撤销那次恢复。' : ''}`
+}
+
 function out(line = ''): void {
   process.stdout.write(`${line}\n`)
 }
@@ -79,6 +88,7 @@ export async function main(argv: readonly string[]): Promise<number> {
       rescue: { type: 'boolean', default: false },
       'dsh-stopped': { type: 'boolean', default: false },
       session: { type: 'string' },
+      yes: { type: 'boolean', short: 'y', default: false },
       help: { type: 'boolean', short: 'h', default: false },
     },
   })
@@ -156,9 +166,46 @@ export async function main(argv: readonly string[]): Promise<number> {
         out('没有可撤销的恢复（需要最近一次恢复已成功）。')
         return 1
       }
+      if (!(await hasRescue(home, cwd, pending.rescueId))) {
+        out(`最近一次恢复的救援点 ${pending.rescueId} 已被删除，不能撤销。`)
+        return 1
+      }
       const guard = await guardFor(cwd, values['dsh-stopped'])
       await registerRestore({ home, cwd, target: { kind: 'rescue', id: pending.rescueId }, relaunch: null })
       return report(await runApply({ home, cwd, guard }))
+    }
+    case 'delete': {
+      const id = rest[0]
+      if (id === undefined) {
+        out('用法：newsnap delete <快照或救援点 id> [--yes]')
+        return 1
+      }
+      const last = await lastApplied(home, cwd)
+      if (!values.yes) {
+        const found = await findSnapshot(home, cwd, id)
+        if (found === undefined) {
+          out(`找不到快照或救援点 ${id}。`)
+          return 1
+        }
+        out(describeDelete(found.kind, found.manifest.snapId, found.manifest.createdAt, found.kind === 'rescue' && last?.rescueId === id))
+        out('确认请加 --yes 重新运行。')
+        return 1
+      }
+      const r = await removeSnapshot(home, cwd, id, last?.rescueId)
+      out(`已删除${r.kind === 'rescue' ? '救援点' : '快照'} ${id}，影子仓库已清理。${r.undoLost ? '最近一次恢复已不能撤销。' : ''}`)
+      return 0
+    }
+    case 'purge': {
+      if (!values.yes) {
+        const s = (await listSnapshots(home, cwd, 'snapshot')).items.length
+        const r = (await listSnapshots(home, cwd, 'rescue')).items.length
+        out(`将删除 ${cwd} 的全部 newsnap 数据：${s} 个快照、${r} 个救援点、影子仓库和恢复记录。工作区文件和你的 .git 不受影响，删除后不能恢复，也不能撤销。`)
+        out('确认请加 --yes 重新运行。')
+        return 1
+      }
+      const p = await purgeWorkspace(home, cwd)
+      out(p.empty ? `${cwd} 没有 newsnap 数据。` : `已删除 ${cwd} 的全部 newsnap 数据（${p.snapshots} 个快照、${p.rescues} 个救援点）。`)
+      return 0
     }
     case 'rollback': {
       const guard = await guardFor(cwd, values['dsh-stopped'])

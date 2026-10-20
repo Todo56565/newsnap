@@ -15,7 +15,7 @@ import { fileURLToPath } from 'node:url'
 import { lastApplied } from './core/apply.ts'
 import { GitMissing } from './core/shadow-git.ts'
 import { newsnapRoot, resolveDshHome } from './core/paths.ts'
-import { listSnapshots } from './core/store.ts'
+import { findSnapshot, hasRescue, listSnapshots, purgeWorkspace, RemoveRefused, removeSnapshot, SnapshotNotFound } from './core/store.ts'
 import { UnsupportedTeamState } from './core/teams.ts'
 import { LockBusy } from './core/lock.ts'
 import { NotATeamSession, SnapshotBlocked, takeSnapshot, teamFor, type HostRuntime } from './host/capture.ts'
@@ -29,7 +29,7 @@ export const name = 'newsnap'
 export const inject = ['agents', 'sessions']
 export const VERSION = '0.1.0-dev'
 
-const USAGE = '用法：/newsnap snap [备注] | list | restore <快照> [confirm] | undo [confirm] | resume | rollback | status'
+const USAGE = '用法：/newsnap snap [备注] | list | restore <快照> [confirm] | undo [confirm] | resume | rollback | status | delete <快照> [confirm] | purge [confirm]'
 
 const HELPER = fileURLToPath(new URL(`./helper/helper${import.meta.url.endsWith('.ts') ? '.ts' : '.js'}`, import.meta.url))
 
@@ -54,6 +54,11 @@ function armExitFallback(): void {
   setTimeout(() => {
     process.exit(0)
   }, 8000).unref()
+}
+
+function describeDelete(kind: 'snapshot' | 'rescue', id: string, createdAt: number, undoLost: boolean): string {
+  const what = kind === 'rescue' ? '救援点' : '快照'
+  return `将删除${what} ${id}（${new Date(createdAt).toLocaleString()}）及其在影子仓库里独占的数据，删除后不能找回。${undoLost ? '它是最近一次恢复的救援点，删除后不能再撤销那次恢复。' : ''}`
 }
 
 function describeImpact(i: Impact, command: string, profile: string): string {
@@ -155,6 +160,7 @@ export function apply(ctx: Context): void {
           } else {
             const last = await lastApplied(home, cwd)
             if (last?.rescueId === undefined) return { kind: 'error', text: 'newsnap：没有可撤销的恢复。' }
+            if (!(await hasRescue(home, cwd, last.rescueId))) return { kind: 'error', text: `newsnap：最近一次恢复的救援点 ${last.rescueId} 已被删除，不能撤销。` }
             target = { kind: 'rescue', id: last.rescueId }
           }
           const rctx = restoreContext(cwd, session.id)
@@ -177,7 +183,29 @@ export function apply(ctx: Context): void {
           if (last === undefined) return { kind: 'success', text: 'newsnap：没有待处理的恢复。' }
           const when = new Date(last.result?.at ?? last.createdAt).toLocaleString()
           const what = last.target.kind === 'snapshot' ? `恢复到快照 ${last.target.id}` : `撤销（回到救援点 ${last.target.id}）`
-          return { kind: 'success', text: `newsnap：没有待处理的恢复。最近一次操作是 ${when} 的${what}，/newsnap undo 可撤销。` }
+          const canUndo = last.rescueId !== undefined && await hasRescue(home, cwd, last.rescueId)
+          return { kind: 'success', text: `newsnap：没有待处理的恢复。最近一次操作是 ${when} 的${what}，${canUndo ? '/newsnap undo 可撤销' : '它的救援点已被删除，不能撤销'}。` }
+        }
+        case 'delete': {
+          const id = rest[0]
+          if (id === undefined || id === 'confirm') return { kind: 'error', text: USAGE }
+          const last = await lastApplied(home, cwd)
+          if (!confirm) {
+            const found = await findSnapshot(home, cwd, id)
+            if (found === undefined) return { kind: 'error', text: `newsnap：找不到快照或救援点 ${id}。` }
+            return { kind: 'success', text: `${describeDelete(found.kind, id, found.manifest.createdAt, found.kind === 'rescue' && last?.rescueId === id)}\n确认请输入：/newsnap delete ${id} confirm` }
+          }
+          const r = await removeSnapshot(home, cwd, id, last?.rescueId)
+          return { kind: 'success', text: `newsnap：已删除${r.kind === 'rescue' ? '救援点' : '快照'} ${id}，影子仓库已清理。${r.undoLost ? '最近一次恢复已不能撤销。' : ''}` }
+        }
+        case 'purge': {
+          if (!confirm) {
+            const s = (await listSnapshots(home, cwd, 'snapshot')).items.length
+            const r = (await listSnapshots(home, cwd, 'rescue')).items.length
+            return { kind: 'success', text: `将删除本工作区（${cwd}）的全部 newsnap 数据：${s} 个快照、${r} 个救援点、影子仓库和恢复记录，所有团队一起删。工作区文件和你的 .git 不受影响，删除后不能恢复，也不能撤销。\n确认请输入：/newsnap purge confirm` }
+          }
+          const p = await purgeWorkspace(home, cwd)
+          return { kind: 'success', text: p.empty ? 'newsnap：本工作区没有 newsnap 数据。' : `newsnap：已删除本工作区的全部 newsnap 数据（${p.snapshots} 个快照、${p.rescues} 个救援点）。` }
         }
         default:
           return { kind: 'error', text: USAGE }
@@ -188,6 +216,7 @@ export function apply(ctx: Context): void {
       if (error instanceof NotATeamSession) return { kind: 'error', text: 'newsnap：当前会话不属于任何活动团队。' }
       if (error instanceof UnsupportedTeamState) return { kind: 'error', text: `newsnap：团队状态格式不认识，拒绝操作（${error.message}）。` }
       if (error instanceof LockBusy) return { kind: 'error', text: `newsnap：另一项操作正在进行（${error.holder.purpose}）。` }
+      if (error instanceof RemoveRefused || error instanceof SnapshotNotFound) return { kind: 'error', text: `newsnap：${error.message}` }
       if (error instanceof RestoreUnsupported || error instanceof RestoreNotFound) return { kind: 'error', text: `newsnap：${error.message}` }
       return { kind: 'error', text: `newsnap 失败：${error instanceof Error ? error.message : String(error)}` }
     }
@@ -196,8 +225,8 @@ export function apply(ctx: Context): void {
   ctx.inject(['commands'], (commandCtx) => {
     commandCtx.effect(() => commandCtx.commands.register({
       name: 'newsnap',
-      description: '团队快照：snap 拍照、list 列出、restore 恢复、undo 撤销',
-      input: { hint: 'snap [备注] | list | restore <快照> | undo | status' },
+      description: '团队快照：snap 拍照、list 列出、restore 恢复、undo 撤销、delete 删除',
+      input: { hint: 'snap [备注] | list | restore <快照> | undo | status | delete <快照> | purge' },
       handler: run,
     }), 'newsnap: slash command')
   })
