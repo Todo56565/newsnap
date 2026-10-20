@@ -114,3 +114,13 @@
 2. 恢复确认用全屏面板（2.4），还是更轻的居中对话框？
 3. 对比视图（2.3）放 M5-2 可以吗？它要算 diff，成本最高。
 4. ~~第三方 Remote 走不通时的后备~~：PoC 已走通，不再需要。
+
+## 5. M5-1 实现（10-21）
+- 宿主：`host/remote.ts` 的 Remote 方法 list / snap / preview / restore / undo（失败统一返回 `{ ok:false, message }`，文案与斜杠命令同源 `host/errors.ts`；restore/undo 回应发出 400ms 后才让宿主退出）。list 带每张快照的 commandId 和最近一次恢复。
+- 客户端 `client/index.js`：
+  - 1 书签卡：注册 `conversation.chat.commandview` 键 `newsnap`，`/newsnap snap` 成功的那一行画成虚线书签（时间、备注、会话数），悬停出「回到这里」；按 commandId 认领快照，快照被删时显示「快照已删除」。其他子命令画成简化的命令行（可展开多行输出）。
+  - B 确认框：用 ui-primitives 的 Modal/Button；一句话代价 + 忽略文件提示 + 其他团队警告，「查看详情」折叠快照 id、新开会话数、重启方式。
+  - 过渡层：确认后全屏半透明「正在回到 HH:MM…」；网页端轮询页面地址，看到服务断开又恢复（或 connection/reset）后自动 `location.reload()`。桌面端只提示点「重启」。
+  - 5 提示条：`conversation.input.dock`，显示最近一次恢复/撤销，带「撤销」（救援点还在时）和 ×；关闭记在 localStorage（按团队+恢复时间）。**发下一条消息后自动消失未做**。
+- 网页 e2e（test/e2e/web/m5.mjs）通过：书签卡出现 → 确认框 → 过渡层 → 12 秒后自动刷新、文件回到 v1 → 提示条 → 撤销 → 14 秒后自动刷新、文件回到 v2 → 提示条变「已撤销上一次恢复」→ × 关闭。控制台只有重启期间的连接拒绝。
+- 已知：文案只有中文；网页上无斜杠命令时拍的快照（Remote snap）没有书签卡（M5-2 时间线里会有）。
