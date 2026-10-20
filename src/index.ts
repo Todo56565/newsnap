@@ -78,7 +78,6 @@ export function apply(ctx: Context): void {
   const home = profile?.home ?? resolveDshHome()
   const frozen = new Set<string>()
   let notices: Notice[] = []
-  registerRemote(ctx, home)
 
   // 冻结：拍照期间本队会话不进入新步骤（agent-teams 也用这个钩子做准入）
   ctx.on('agent/pre-step', async ({ agent }, next) => {
@@ -122,6 +121,8 @@ export function apply(ctx: Context): void {
       }),
     }
   }
+
+  registerRemote(ctx, { home, host, version: VERSION, restoreContext })
 
   function noticeText(cwd: string): string {
     const mine = notices.filter((n) => n.cwd === cwd)
