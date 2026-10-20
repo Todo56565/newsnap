@@ -21,6 +21,7 @@ import { LockBusy } from './core/lock.ts'
 import { NotATeamSession, SnapshotBlocked, takeSnapshot, teamFor, type HostRuntime } from './host/capture.ts'
 import { formatBlocked, formatList, formatSnapshot } from './host/format.ts'
 import { registerDevTool } from './host/dev-tool.ts'
+import { registerRemote } from './host/remote.ts'
 import { reconcile, type Notice } from './host/reconcile.ts'
 import { markCommandClosed, pendingCommandFixes } from './host/open-commands.ts'
 import { continueRestore, previewRestore, relaunchesItself, RestoreNotFound, RestoreUnsupported, startRestore, type Impact, type RestoreContext } from './host/restore.ts'
@@ -76,6 +77,7 @@ export function apply(ctx: Context): void {
   const home = profile?.home ?? resolveDshHome()
   const frozen = new Set<string>()
   let notices: Notice[] = []
+  registerRemote(ctx, home)
 
   // 冻结：拍照期间本队会话不进入新步骤（agent-teams 也用这个钩子做准入）
   ctx.on('agent/pre-step', async ({ agent }, next) => {
