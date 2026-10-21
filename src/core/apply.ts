@@ -351,6 +351,29 @@ export async function lastAppliedIn(root: string): Promise<PendingRestore | unde
   return best?.status === 'applied' ? best : undefined
 }
 
+/** 成功的恢复记录（当前登记 + history/），新的在前。时光机时间线用。 */
+export async function restoreHistory(home: string, cwd: string): Promise<PendingRestore[]> {
+  const root = newsnapRoot(home, cwd)
+  const out: PendingRestore[] = []
+  const current = await readPending(root).catch(() => undefined)
+  if (current?.status === 'applied') out.push(current)
+  let names: string[] = []
+  try {
+    names = await readdir(layout(root).history)
+  } catch {
+    // 没有历史
+  }
+  for (const name of names) {
+    try {
+      const p = validatePending(await readJson(join(layout(root).history, name)))
+      if (p.status === 'applied') out.push(p)
+    } catch {
+      // 跳过
+    }
+  }
+  return out.sort((a, b) => (b.result?.at ?? b.createdAt) - (a.result?.at ?? a.createdAt))
+}
+
 /** 登记一次恢复。已有进行中的登记就拒绝；已结束的先归档。 */
 export async function registerRestore(params: {
   home: string

@@ -12,7 +12,11 @@
  */
 
 import type { Context } from '@deepseek-ai/cordis'
-import { lastApplied } from '../core/apply.ts'
+import { lastApplied, restoreHistory } from '../core/apply.ts'
+import { resolveTeamSessions } from '../core/capture.ts'
+import { checkRelPath, compareWorkspace, fileDiff, sessionImpact, UnsafePath, type FileChange, type FileDiff, type SessionImpact } from '../core/compare.ts'
+import { layout, readManifest, type SnapManifest } from '../core/manifest.ts'
+import { newsnapRoot } from '../core/paths.ts'
 import { hasRescue, listSnapshots } from '../core/store.ts'
 import { findTeamOfSession } from '../core/teams.ts'
 import { takeSnapshot, type HostRuntime } from './capture.ts'
@@ -22,7 +26,7 @@ import { previewRestore, relaunchesItself, startRestore, type RestoreContext } f
 export const REMOTE_SERVICE_KEY = 'newsnapRemote'
 export const REMOTE_NAMESPACE = 'newsnap'
 const REMOTE_METHOD_DESCRIPTOR = '@deepseek-ai/dsh-typert-protocol/remote-methods'
-const METHODS = ['list', 'snap', 'preview', 'restore', 'undo'] as const
+const METHODS = ['list', 'snap', 'preview', 'restore', 'undo', 'compare', 'fileDiff'] as const
 /** Remote 回应要先发回网页，再让宿主退出。 */
 const EXIT_AFTER_REPLY_MS = 400
 
@@ -54,6 +58,18 @@ export interface SnapshotsView {
     readonly at: number
     readonly canUndo: boolean
   } | null
+  /** 成功的恢复与撤销，新的在前（时光机时间线）。 */
+  readonly history: ReadonlyArray<{ readonly kind: 'snapshot' | 'rescue'; readonly target: string; readonly at: number }>
+}
+
+/** 时光机：选中的快照与「现在」的差别。 */
+export interface CompareView {
+  readonly id: string
+  readonly createdAt: number
+  readonly note?: string
+  readonly files: FileChange[]
+  readonly skipped: readonly string[]
+  readonly sessions: SessionImpact[]
 }
 
 export interface PreviewView {
@@ -98,7 +114,7 @@ export class NewsnapRemote {
     return this.guard('读取', async () => {
       const cwd = session.header.cwd
       const team = cwd === undefined ? undefined : await findTeamOfSession(cwd, session.id)
-      if (cwd === undefined || team === undefined) return { team: null, snapshots: [], lastApplied: null }
+      if (cwd === undefined || team === undefined) return { team: null, snapshots: [], lastApplied: null, history: [] }
       const { home } = this.deps
       const listing = await listSnapshots(home, cwd, 'snapshot', team)
       const last = await lastApplied(home, cwd)
@@ -118,6 +134,7 @@ export class NewsnapRemote {
           at: last.result?.at ?? last.createdAt,
           canUndo: last.rescueId !== undefined && await hasRescue(home, cwd, last.rescueId),
         },
+        history: (await restoreHistory(home, cwd)).map((p) => ({ kind: p.target.kind, target: p.target.id, at: p.result?.at ?? p.createdAt })),
       }
     })
   }
@@ -164,6 +181,41 @@ export class NewsnapRemote {
       if (!(await hasRescue(this.deps.home, cwd, last.rescueId))) throw new RemoteInputError(`最近一次恢复的救援点 ${last.rescueId} 已被删除，不能撤销`)
       return this.start(session, { kind: 'rescue', id: last.rescueId })
     })
+  }
+
+  /** 快照与现在：文件增删改、各会话轮数。只读。 */
+  async compare(session: SessionLike, id: unknown): Promise<Outcome<CompareView>> {
+    return this.guard('对比', async () => {
+      const { cwd, m, dir, repo } = await this.ownSnapshot(session, id)
+      const team = await findTeamOfSession(cwd, session.id)
+      const current = team === undefined ? [] : await resolveTeamSessions(this.deps.home, cwd, team)
+      const ws = await compareWorkspace({ cwd, repoDir: repo, commit: m.workspace.commit, skipped: m.workspace.skipped })
+      const sessions = await sessionImpact({ home: this.deps.home, snapDir: dir, manifest: m, current })
+      return { id: m.snapId, createdAt: m.createdAt, ...(m.note !== undefined && { note: m.note }), files: ws.files, skipped: ws.skipped, sessions }
+    })
+  }
+
+  /** 一个文件在快照里与现在的内容。 */
+  async fileDiff(session: SessionLike, id: unknown, path: unknown): Promise<Outcome<FileDiff>> {
+    return this.guard('对比', async () => {
+      if (typeof path !== 'string') throw new RemoteInputError('文件路径不合法')
+      try { checkRelPath(path) } catch (error) { if (error instanceof UnsafePath) throw new RemoteInputError(error.message); throw error }
+      const { cwd, m, repo } = await this.ownSnapshot(session, id)
+      return fileDiff({ cwd, repoDir: repo, commit: m.workspace.commit, path })
+    })
+  }
+
+  /** 读本会话所在团队的一张快照（别的团队的不给看）。 */
+  private async ownSnapshot(session: SessionLike, id: unknown): Promise<{ cwd: string; m: SnapManifest; dir: string; repo: string }> {
+    const sid = snapId(id)
+    const cwd = this.cwdOf(session)
+    const team = await findTeamOfSession(cwd, session.id)
+    if (team === undefined) throw new RemoteInputError('这个会话不属于任何团队')
+    const L = layout(newsnapRoot(this.deps.home, cwd))
+    const dir = L.snapDir(sid)
+    const m = await readManifest(dir).catch(() => undefined)
+    if (m === undefined || m.team.id !== team.id || m.team.createdAt !== team.createdAt) throw new RemoteInputError(`找不到快照 ${sid}`)
+    return { cwd, m, dir, repo: L.repo }
   }
 
   private async start(session: SessionLike, target: { kind: 'snapshot' | 'rescue'; id: string }): Promise<{ relaunches: boolean }> {

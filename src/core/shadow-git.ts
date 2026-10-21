@@ -283,6 +283,17 @@ export async function workspaceMatches(params: {
   }
 }
 
+/** 按收录规则给当前工作区建树（对象写进影子仓库，不挂 ref），返回树 hash。只读工作区。 */
+export async function currentTree(cwd: string, repoDir: string, maxFileBytes = DEFAULT_MAX_FILE_BYTES): Promise<{ tree: string; listing: Listing }> {
+  const listing = await listWorkspace(cwd, repoDir, maxFileBytes)
+  const index = tmpIndex()
+  try {
+    return { tree: await buildTree(cwd, repoDir, listing.files, index), listing }
+  } finally {
+    await rm(index, { force: true })
+  }
+}
+
 /** 提交里的文件路径。 */
 export async function commitFiles(repoDir: string, commit: string): Promise<string[]> {
   return splitZ(await git(['--git-dir', repoDir, 'ls-tree', '-r', '--name-only', '-z', commit]))
