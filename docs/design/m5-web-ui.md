@@ -148,3 +148,8 @@
 **测试**：compare / fileDiff 单测；一次真实网页验证（打开标签页、选快照、看 diff、从标签页恢复）。
 
 **不做**：快照互比、会话列表标记、轮次导航条快照线。
+
+### 6a. M5-2 实现与验证（10-21）
+- c8b846a 宿主端：core/compare.ts（compareWorkspace 只读建树对比、fileDiff、多帧 zstd 读会话日志数 turn/start），Remote `compare`/`fileDiff`，list 带 `history`；65 项单测。
+- 客户端：右栏页类型 `newsnapTimeline`（id `newsnap/timeline`，无地址，参数 `newsnapSnap` 选中快照），「+」引导页有「时光机」入口；书签悬停多一个「对比」；diff 用 ui-primitives 的 DiffBlock（取不到时退回纯文本）。
+- 网页 e2e（test/e2e/web/m5-2.mjs）：书签「对比」打开时光机 → 新增 1 · 修改 1 → 展开 tm.txt diff → 时光机里「回到这里」→ 12 秒自动刷新、文件回到快照 → 时间线出现「恢复到…」记录；引导页显示时光机入口。无页面错误（只有重启期间的连接断开）。

@@ -14,7 +14,7 @@ window.__ModuleLoader__.load({
     const h = React.createElement
     const { useState, useEffect, useCallback, useSyncExternalStore } = React
 
-    const inject = ['slots', 'connection']
+    const inject = ['slots', 'connection', 'sidebarRight', 'sidebarRightTabs']
 
     const C = {
       text: 'var(--dsw-alias-label-primary, inherit)',
@@ -61,6 +61,46 @@ window.__ModuleLoader__.load({
 .nsn-note{margin:0 0 8px;line-height:1.65;color:var(--dsw-alias-label-primary)}
 .nsn-note-dim{color:var(--dsw-alias-label-secondary)}
 .nsn-details{margin-top:8px;padding:8px 12px;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-layer-1);font-size:12px;line-height:1.8;color:var(--dsw-alias-label-secondary)}
+.nsn-tm{box-sizing:border-box;height:100%;overflow:auto;padding:8px 12px 24px;color:var(--dsw-alias-label-primary);font-size:13px}
+.nsn-tm-head{display:flex;align-items:center;gap:6px;height:28px;margin:8px 0 4px;color:var(--dsw-alias-label-tertiary);font-size:12px}
+.nsn-tm-head>span:first-child{flex:1}
+.nsn-tl{position:relative;margin:0;padding:0;list-style:none}
+.nsn-tl::before{position:absolute;top:14px;bottom:14px;left:9px;border-left:1px dashed var(--dsw-alias-border-l3);content:''}
+.nsn-tl-item{position:relative;display:flex;align-items:center;gap:8px;min-height:28px;padding:2px 8px 2px 0;border-radius:var(--dsw-radius-sm)}
+.nsn-tl-item[data-kind='snap']{cursor:pointer}
+.nsn-tl-item[data-kind='snap']:hover{background:var(--dsw-alias-interactive-bg-hover)}
+.nsn-tl-item[aria-selected='true']{background:var(--dsw-alias-bg-layer-1)}
+.nsn-tl-dot{position:relative;z-index:1;display:inline-flex;flex:none;align-items:center;justify-content:center;width:19px;height:19px;color:var(--dsw-alias-label-tertiary);background:var(--dsw-alias-bg-base);border-radius:50%}
+.nsn-tl-item[aria-selected='true'] .nsn-tl-dot{color:var(--dsw-alias-label-primary)}
+.nsn-tl-now{width:7px;height:7px;border-radius:50%;background:var(--dsw-alias-label-secondary)}
+.nsn-tl-time{flex:none;font-weight:500;font-variant-numeric:tabular-nums}
+.nsn-tl-text{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-secondary)}
+.nsn-tl-item[data-kind='event']{min-height:22px;font-size:12px;color:var(--dsw-alias-label-tertiary)}
+.nsn-tl-item[data-kind='event'] .nsn-tl-text,.nsn-tl-item[data-kind='event'] .nsn-tl-time{color:var(--dsw-alias-label-tertiary);font-weight:400}
+.nsn-cmp{margin-top:12px;padding-top:8px;border-top:.5px solid var(--dsw-alias-border-l1)}
+.nsn-cmp-title{display:flex;align-items:center;gap:8px;min-height:28px;font-weight:500}
+.nsn-cmp-title>span:first-child{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nsn-cmp-sum{margin:2px 0 6px;color:var(--dsw-alias-label-secondary);font-size:12px;line-height:20px}
+.nsn-file{display:flex;align-items:center;gap:8px;width:100%;min-height:26px;padding:0 6px;border:0;border-radius:var(--dsw-radius-sm);background:transparent;color:inherit;font:inherit;font-size:12px;text-align:left;cursor:pointer}
+.nsn-file:hover,.nsn-file[aria-expanded='true']{background:var(--dsw-alias-interactive-bg-hover)}
+.nsn-file-st{flex:none;width:12px;font-family:var(--ds-font-family-code);font-size:11px;text-align:center}
+.nsn-file-st[data-st='added']{color:var(--dsw-alias-state-success-primary)}
+.nsn-file-st[data-st='deleted']{color:var(--dsw-alias-state-error-primary)}
+.nsn-file-st[data-st='modified']{color:var(--dsw-alias-state-warn-primary)}
+.nsn-file-path{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;direction:rtl;text-align:left}
+.nsn-counts{display:inline-flex;flex:none;gap:6px;font-family:var(--ds-font-family-code);font-size:12px;color:var(--dsw-alias-label-tertiary)}
+.nsn-add{color:var(--dsw-alias-state-success-primary)}
+.nsn-del{color:var(--dsw-alias-state-error-primary)}
+.nsn-diff{margin:4px 0 8px}
+.nsn-diff-note{margin:4px 6px 8px 26px;color:var(--dsw-alias-label-tertiary);font-size:12px}
+.nsn-sess{display:flex;align-items:center;gap:8px;min-height:24px;padding:0 6px;font-size:12px}
+.nsn-sess-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.nsn-sess-id{color:var(--dsw-alias-label-tertiary);font-family:var(--ds-font-family-code);font-size:11px}
+.nsn-sess-eff{flex:none;color:var(--dsw-alias-label-secondary)}
+.nsn-sess-eff[data-warn]{color:var(--dsw-alias-state-warn-primary)}
+.nsn-tm-foot{display:flex;align-items:center;gap:8px;margin-top:14px}
+.nsn-tm-foot .nsn-note-dim{flex:1;font-size:12px;line-height:18px}
+.nsn-empty{padding:24px 8px;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:1.7;text-align:center}
 @keyframes nsn-spin{to{transform:rotate(360deg)}}
 .nsn-spin{display:inline-flex;animation:nsn-spin 1s linear infinite;color:var(--dsw-alias-label-tertiary)}
 `
@@ -369,6 +409,7 @@ window.__ModuleLoader__.load({
           h('span', { className: 'nsn-mark-line' }),
           // 操作浮在右端虚线上，不占位，书签内容始终居中；悬停或键盘聚焦时出现
           snap && h('span', { className: 'nsn-mark-action' },
+            canOpenTimeline(ctx) && h('button', { type: 'button', className: 'nsn-text-btn', onClick: () => openTimeline(ctx, snap.id), 'data-newsnap': 'compare' }, icon('IconCompareSplitOutlineRegular', 12), '对比'),
             h('button', { type: 'button', className: 'nsn-text-btn', onClick: () => setDialog(true), 'data-newsnap': 'restore' }, icon('IconRefreshOutlineRegular', 12), '回到这里')),
         dialog && snap && h(ConfirmDialog, { ctx, call, sessionId, mode: 'restore', snap, onClose: () => setDialog(false) }))
       }
@@ -402,6 +443,149 @@ window.__ModuleLoader__.load({
       }
     }
 
+    // ── 3 右侧栏「时光机」：时间线 + 选中快照与「现在」的对比（m5-web-ui.md §6）──
+    const TAB_ID = 'newsnap/timeline'
+    const TAB_KIND = 'newsnapTimeline'
+    const canOpenTimeline = (ctx) => !!(ctx.sidebarRight && typeof ctx.sidebarRight.openTab === 'function')
+    function openTimeline(ctx, snapId) {
+      try { ctx.sidebarRight.openTab(TAB_KIND, snapId ? { params: { newsnapSnap: snapId } } : {}) } catch (e) { console.warn('newsnap: open timeline failed', e) }
+    }
+    const ROLE = { captain: '队长', member: '成员', descendant: '子代理' }
+    const ST = { added: 'A', modified: 'M', deleted: 'D' }
+    const DIFF_LABELS = {
+      copy: '复制', copied: '已复制', collapseAria: '收起', expandAria: (n) => `展开其余 ${n} 行`, collapse: '收起', expand: (n) => `展开其余 ${n} 行`,
+      codeLabel: '差异', wrapLabel: '自动换行', unwrapLabel: '不换行',
+    }
+    const errText = (r, fallback) => (r.ok ? r.value.message : (r.error && (r.error.message || r.error.code)) || fallback)
+
+    function FileRow({ call, sessionId, snapId, file }) {
+      const [open, setOpen] = useState(false)
+      const [diff, setDiff] = useState(null)
+      useEffect(() => {
+        if (!open || diff !== null) return
+        let live = true
+        call('fileDiff', { sessionId, id: snapId, path: file.path }).then((r) => {
+          if (live) setDiff(r.ok && r.value.ok ? r.value.value : { kind: 'error', message: errText(r, '读取失败') })
+        })
+        return () => { live = false }
+      }, [open])
+      const counts = file.added === null
+        ? h('span', { className: 'nsn-counts' }, '二进制')
+        : h('span', { className: 'nsn-counts' }, file.added > 0 && h('span', { className: 'nsn-add' }, `+${file.added}`), file.removed > 0 && h('span', { className: 'nsn-del' }, `−${file.removed}`))
+      let body = null
+      if (open) {
+        if (diff === null) body = h('div', { className: 'nsn-diff-note' }, '正在读取…')
+        else if (diff.kind === 'error') body = h('div', { className: 'nsn-diff-note', style: { color: C.error } }, diff.message)
+        else if (diff.kind === 'binary') body = h('div', { className: 'nsn-diff-note' }, '二进制文件，不显示内容')
+        else if (diff.kind === 'too-large') body = h('div', { className: 'nsn-diff-note' }, '文件太大，不显示内容')
+        else body = P.DiffBlock
+          ? h('div', { className: 'nsn-diff' }, h(P.DiffBlock, { diffs: [{ path: file.path, oldText: diff.oldText, newText: diff.newText ?? '' }], labels: DIFF_LABELS, maxLines: 40 }))
+          : h('pre', { className: 'nsn-body' }, `--- 快照\n${diff.oldText ?? ''}\n+++ 现在\n${diff.newText ?? ''}`)
+      }
+      return h('div', { 'data-newsnap': 'file', 'data-path': file.path },
+        h('button', { type: 'button', className: 'nsn-file', 'aria-expanded': open, onClick: () => setOpen(!open), title: file.path },
+          h('span', { className: 'nsn-file-st', 'data-st': file.status }, ST[file.status]),
+          h('span', { className: 'nsn-file-path' }, h('bdi', null, file.path)),
+          counts),
+        body)
+    }
+
+    function sessionEffect(s) {
+      if (s.change === 'removed') return { text: '快照之后新开，会移进撤销点', warn: true }
+      if (s.change === 'restored') return { text: '现在已不在，会回来', warn: false }
+      if (s.snapTurns === null || s.nowTurns === null) return { text: '轮数读不出', warn: false }
+      const back = s.nowTurns - s.snapTurns
+      return back > 0 ? { text: `退回 ${back} 轮（${s.nowTurns} → ${s.snapTurns}）`, warn: true } : { text: '没有新的轮次', warn: false }
+    }
+
+    function CompareView({ ctx, call, sessionId, snap }) {
+      const [data, setData] = useState(null)
+      const [dialog, setDialog] = useState(false)
+      const [tick, setTick] = useState(0)
+      useEffect(() => {
+        let live = true
+        setData(null)
+        call('compare', { sessionId, id: snap.id }).then((r) => {
+          if (live) setData(r.ok && r.value.ok ? { ok: true, value: r.value.value } : { ok: false, message: errText(r, '对比失败') })
+        })
+        return () => { live = false }
+      }, [snap.id, tick])
+      const v = data && data.ok ? data.value : null
+      const n = (st) => v.files.filter((f) => f.status === st).length
+      const parts = v ? [['新增', n('added')], ['修改', n('modified')], ['删除', n('deleted')]].filter(([, c]) => c > 0).map(([l, c]) => `${l} ${c}`) : []
+      return h('section', { className: 'nsn-cmp', 'data-newsnap': 'compare', 'data-snap': snap.id },
+        h('div', { className: 'nsn-cmp-title' },
+          h('span', null, `${when(snap.createdAt)}${snap.note ? `「${snap.note}」` : ' 快照'} → 现在`),
+          h(IconAction, { label: '重新对比', iconName: 'IconRefreshOutlineRegular', onClick: () => setTick(tick + 1) })),
+        data === null && h('div', { className: 'nsn-cmp-sum' }, h(TextShimmer, null, '正在对比…')),
+        data && !data.ok && h('div', { className: 'nsn-cmp-sum', style: { color: C.error } }, data.message),
+        v && h(React.Fragment, null,
+          h('div', { className: 'nsn-tm-head' }, h('span', null, '工作区文件')),
+          h('div', { className: 'nsn-cmp-sum', 'data-newsnap': 'file-summary' }, v.files.length === 0 ? '和现在一样，没有改动' : `快照之后 ${parts.join(' · ')}，回到这里会撤回`),
+          v.files.map((f) => h(FileRow, { key: `${snap.id}:${f.path}`, call, sessionId, snapId: snap.id, file: f })),
+          h('div', { className: 'nsn-tm-head' }, h('span', null, '会话')),
+          v.sessions.map((s) => {
+            const e = sessionEffect(s)
+            return h('div', { key: s.id, className: 'nsn-sess', 'data-newsnap': 'session', 'data-change': s.change },
+              h('span', { className: 'nsn-sess-name' }, `${ROLE[s.role] || s.role} `, h('span', { className: 'nsn-sess-id' }, s.id.replace(/^session-/, '').slice(0, 8))),
+              h('span', { className: 'nsn-sess-eff', 'data-warn': e.warn || undefined }, e.text))
+          }),
+          h('div', { className: 'nsn-tm-foot' },
+            h('span', { className: 'nsn-note-dim' }, '被 .gitignore 忽略的生成物不回退；恢复前会先存撤销点。'),
+            h(Button, { variant: 'outline', size: 'sm', onClick: () => setDialog(true), 'data-newsnap': 'tm-restore' }, '回到这里'))),
+        dialog && h(ConfirmDialog, { ctx, call, sessionId, mode: 'restore', snap, onClose: () => setDialog(false) }))
+    }
+
+    function makeTimeline(ctx, store, call) {
+      return function NewsnapTimeline(props) {
+        const sessionId = props.sessionId
+        const useTabInfo = props.useTabInfo || (props.hooks && props.hooks.tabInfo)
+        const info = typeof useTabInfo === 'function' ? useTabInfo() : undefined
+        const nav = info && info.tab && info.tab.navigation
+        const asked = nav && nav.params && nav.params.newsnapSnap
+        const visible = !info || !info.tab || info.tab.visible !== false
+        const state = useView(store, sessionId)
+        const [picked, setPicked] = useState(asked || null)
+        useEffect(() => { if (asked) setPicked(asked) }, [asked, nav && nav.revision])
+        useEffect(() => { if (visible) void store.refresh(sessionId) }, [visible, sessionId])
+        if (state.status === 'idle' || state.status === 'loading') return h('div', { className: 'nsn-tm' }, h('div', { className: 'nsn-empty' }, h(TextShimmer, null, '正在读取…')))
+        if (state.status === 'error') return h('div', { className: 'nsn-tm' }, h('div', { className: 'nsn-empty', style: { color: C.error } }, state.message))
+        const view = state.view
+        if (view.team === null) return h('div', { className: 'nsn-tm', 'data-newsnap': 'timeline' }, h('div', { className: 'nsn-empty' }, '这个会话不属于 agent-teams 团队，没有团队快照。'))
+        if (view.snapshots.length === 0) return h('div', { className: 'nsn-tm', 'data-newsnap': 'timeline' }, h('div', { className: 'nsn-empty' }, `团队 ${view.team.name} 还没有快照。`, h('br'), '在对话里输入 /newsnap snap 拍一张。'))
+        const selected = view.snapshots.find((x) => x.id === picked) || view.snapshots[0]
+        const byId = new Map(view.snapshots.map((x) => [x.id, x]))
+        const items = [
+          ...view.snapshots.map((x) => ({ kind: 'snap', at: x.createdAt, snap: x })),
+          ...(view.history || []).map((e) => ({ kind: 'event', at: e.at, event: e })),
+        ].sort((a, b) => b.at - a.at)
+        return h('div', { className: 'nsn-tm', 'data-newsnap': 'timeline' },
+          h('div', { className: 'nsn-tm-head' }, h('span', null, `团队 ${view.team.name} · ${view.snapshots.length} 张快照`),
+            h(IconAction, { label: '刷新', iconName: 'IconRefreshOutlineRegular', onClick: () => store.refresh(sessionId) })),
+          h('ul', { className: 'nsn-tl', role: 'listbox', 'aria-label': '快照时间线' },
+            h('li', { className: 'nsn-tl-item', 'data-kind': 'now' }, h('span', { className: 'nsn-tl-dot' }, h('span', { className: 'nsn-tl-now' })), h('span', { className: 'nsn-tl-time' }, '现在')),
+            items.map((it) => {
+              if (it.kind === 'event') {
+                const t = it.event.kind === 'snapshot' ? byId.get(it.event.target) : undefined
+                const text = it.event.kind === 'snapshot' ? `恢复到${t ? ` ${when(t.createdAt)}${t.note ? `「${t.note}」` : ''}` : '快照'}` : '撤销了一次恢复'
+                return h('li', { key: `e${it.at}`, className: 'nsn-tl-item', 'data-kind': 'event', 'data-newsnap': 'tl-event' },
+                  h('span', { className: 'nsn-tl-dot' }, icon('IconRefreshOutlineRegular', 11)), h('span', { className: 'nsn-tl-time' }, when(it.at)), h('span', { className: 'nsn-tl-text' }, text))
+              }
+              const x = it.snap
+              return h('li', {
+                key: x.id, className: 'nsn-tl-item', 'data-kind': 'snap', 'data-newsnap': 'tl-snap', 'data-snap': x.id, role: 'option', tabIndex: 0,
+                'aria-selected': x.id === selected.id, onClick: () => setPicked(x.id),
+                onKeyDown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setPicked(x.id) } },
+              },
+              h('span', { className: 'nsn-tl-dot' }, icon('IconClockOutlineRegular', 13)),
+              h('span', { className: 'nsn-tl-time' }, when(x.createdAt)),
+              h('span', { className: 'nsn-tl-text' }, x.note || '快照'),
+              h('span', { className: 'nsn-mark-meta', style: { fontSize: 12 } }, `${x.sessions} 个会话`))
+            })),
+          h(CompareView, { key: selected.id, ctx, call, sessionId, snap: selected }))
+      }
+    }
+
     function apply(ctx) {
       const call = (method, args) => ctx.connection.rpc.call('/api', `newsnap/${method}`, { args })
       const store = createStore(call)
@@ -416,6 +600,18 @@ window.__ModuleLoader__.load({
         order: 20,
         inject: (sessionId) => ({ sessionId }),
       }, makeBanner(ctx, store, call)))
+      if (ctx.sidebarRightTabs && typeof ctx.sidebarRightTabs.register === 'function') {
+        const def = {
+          id: TAB_ID, kind: TAB_KIND, priority: 'extension', title: () => '时光机',
+          guide: [{ id: 'open', order: 60, title: () => '时光机', description: () => '团队快照时间线，和现在对比', ...(P.IconClockOutlineRegular && { icon: P.IconClockOutlineRegular }) }],
+        }
+        if (typeof ctx.effect === 'function') ctx.effect(() => ctx.sidebarRightTabs.register(def), 'newsnap: timeline tab')
+        else ctx.sidebarRightTabs.register(def)
+        ctx.slots.inject('sidebar.right.pane.tab', () => ctx.slots.register({
+          name: 'sidebar.right.pane.tab', key: TAB_ID,
+          inject: (sessionId) => ({ sessionId }),
+        }, makeTimeline(ctx, store, call)))
+      }
     }
 
     module.exports.inject = inject
